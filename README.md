@@ -70,6 +70,34 @@ always loud:
 
 All of this lives in `TICKER_OVERRIDES` / `UNAVAILABLE` in `common.py`.
 
+## Other asset classes
+
+ThetaData covers **Options, Stocks, Indices, and Interest Rates**. There is no
+futures data, and no FX, crypto, or commodities -- not in the client, not on
+the pricing page. Those need a different vendor.
+
+Indices and rates are EOD and free, and `reference.py` pulls all of it in
+about 35 seconds:
+
+| Table | Contents |
+|---|---|
+| `indices_2025.parquet` | SPX, RUT, OEX, XSP + VIX1D, VIX9D, VIX, VIX3M, VIX1Y, VVIX, SKEW |
+| `yields_2025.parquet` | CBOE treasury yield indices: 13w, 5y, 10y, 30y |
+| `rates_2025.parquet` | SOFR overnight |
+
+Caveats:
+
+- NDX is rejected with `INVALID_ARGUMENT`; DJI and MOVE return no data. These
+  are licensed indices ThetaData does not redistribute. The CBOE family is
+  fine.
+- The yield indices are quoted at **10x the yield in percent** (TNX 43.0 =
+  4.30%), so `reference.py` divides by 1000 to store a decimal yield.
+- `interest_rate_history_eod` serves only `SOFR`; there are no other tenors.
+  Use the yield indices for curve shape.
+
+The full VIX term structure being free is worth noting -- it is the natural
+companion to the option chains, and needs no paid tier.
+
 ## Intraday access
 
 Probed empirically: on FREE, **every** intraday endpoint returns
