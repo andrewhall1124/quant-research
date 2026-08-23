@@ -28,7 +28,7 @@ def run(
     workers: int,
     limit: int | None,
 ) -> None:
-    symbols = load_universe_tickers(universe_path, limit)
+    symbols = load_universe_tickers(universe_path, "stock", limit)
     print(f"underlying: {len(symbols)} symbols, {start_date} .. {end_date}")
 
     started = time.perf_counter()

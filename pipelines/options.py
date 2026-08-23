@@ -38,7 +38,7 @@ def run(
     workers: int,
     limit: int | None,
 ) -> None:
-    symbols = load_universe_tickers(universe_path, limit)
+    symbols = load_universe_tickers(universe_path, "option", limit)
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 

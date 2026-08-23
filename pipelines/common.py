@@ -28,13 +28,48 @@ def make_client() -> ThetaClient:
     return shared_client
 
 
-def load_universe_tickers(universe_path: str, limit: int | None = None) -> list[str]:
+# ThetaData's stock and option endpoints use different symbologies, so the
+# Wikipedia ticker has to be mapped per asset class. Stocks keep the dot
+# (BRK.B); options strip it (BRKB, BFB). Confirmed against both endpoints.
+#
+# BNY is mapped for BOTH asset classes, and not just for convenience: the stock
+# endpoint answers a BNY request with an unrelated ~$10 small-cap rather than
+# an error, so leaving it unmapped silently fills the dataset with the wrong
+# instrument. Bank of New York Mellon is BK there all year.
+TICKER_OVERRIDES = {"BNY": "BK"}
+
+# Present in the Wikipedia universe but absent from ThetaData, so never worth
+# requesting. ECHO, MRSH and VMRK are stale entries from the changes table and
+# are missing for both asset classes; NVR trades but has no chain in
+# ThetaData's option universe.
+UNAVAILABLE = {
+    "stock": {"ECHO", "MRSH", "VMRK"},
+    "option": {"ECHO", "MRSH", "VMRK", "NVR"},
+}
+
+
+def normalize_ticker(ticker: str, asset: str) -> str:
+    """Map a Wikipedia ticker onto ThetaData's spelling for `asset`."""
+    ticker = TICKER_OVERRIDES.get(ticker, ticker)
+    return ticker if asset == "stock" else ticker.replace(".", "")
+
+
+def load_universe_tickers(
+    universe_path: str, asset: str, limit: int | None = None
+) -> list[str]:
     tickers = (
         pl.read_parquet(universe_path)
         .select("ticker")
         .unique()
         .sort("ticker")["ticker"]
         .to_list()
+    )
+    tickers = sorted(
+        {
+            normalize_ticker(ticker, asset)
+            for ticker in tickers
+            if ticker not in UNAVAILABLE[asset]
+        }
     )
     return tickers[:limit] if limit else tickers
 
