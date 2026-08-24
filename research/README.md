@@ -25,8 +25,20 @@ Report: `box_rates_report.html` (also published as an artifact).
 | `term_matched.py` | Box rates vs a maturity-matched Treasury yield |
 | `pull_fred.py` | Treasury constant maturities + SOFR averages from FRED |
 | `tradability.py` | Does the spread survive crossing the bid/ask? |
+| `spx_factsheet.py` | marimo notebook: chain coverage, box funnel, rate time series |
 
 Run in that order; `pull_index_options.py` takes ~23 min for all three symbols.
+
+The factsheet is a [marimo](https://marimo.io) notebook -- a plain `.py` file, so it
+diffs in git like source rather than as JSON blobs:
+
+```bash
+marimo edit research/spx_factsheet.py          # interactive, reactive re-run
+marimo export html research/spx_factsheet.py -o research/spx_factsheet.html
+```
+
+`spx_factsheet.html` is the exported render, checked in so it can be read without
+running anything.
 
 ### Why box spreads
 
