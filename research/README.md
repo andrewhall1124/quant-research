@@ -23,6 +23,8 @@ Report: `box_rates_report.html` (also published as an artifact).
 | `implied_rates.py` | Box-spread and put-call-parity estimators |
 | `run_analysis.py` | Level, term structure, dividend check, American contrast |
 | `term_matched.py` | Box rates vs a maturity-matched Treasury yield |
+| `pull_fred.py` | Treasury constant maturities + SOFR averages from FRED |
+| `tradability.py` | Does the spread survive crossing the bid/ask? |
 
 Run in that order; `pull_index_options.py` takes ~23 min for all three symbols.
 
@@ -62,3 +64,42 @@ ThetaData gives us no dividend or corporate-action data at any tier.
 - EOD midpoints are not executable prices.
 - 49 of 250 trading days yield no measurable box, so the daily series is not a
   continuous panel. Early March to mid-April is missing entirely.
+
+## Is the spread tradeable?
+
+No, not by legging at quoted prices. With a proper FRED Treasury short end the
+mid-price edge is **+23bp**, but crossing the bid/ask on all four legs costs
+**248bp one-way**. Only 0.6% of boxes are profitable at the touch.
+
+In index points, on a median 1690-wide box costing 1636 at mid:
+
+| | Points | Dollars |
+|---|---|---|
+| Slippage budget before the edge is gone | 2.58 | $258 |
+| Cost of crossing all four legs | 28.75 | $2,875 |
+
+So the fill must land within ~10% of the mid-to-touch distance -- you need to
+capture ~90% of the quoted leg spread, or a package quote no wider than about
+5 index points.
+
+Two caveats cut in opposite directions, and neither is resolvable from this data:
+
+- EOD leg quotes **overstate** real cost. Boxes trade as a single package, and
+  market makers quote the package far tighter than the sum of four leg spreads.
+- EOD snapshots are taken when quotes are at their widest.
+
+The honest conclusion is that this is an execution-quality trade, not an alpha
+signal. The economics are a financing spread -- compensation for balance sheet
+and liquidity -- and they accrue to whoever executes cheapest.
+
+Note it is **not** a pairs trade. A box held to expiry has a contractual payoff,
+so there is no convergence leg to short; adding a short Treasury just introduces
+repo cost. The real comparison is cash management: park cash in a box versus a
+T-bill, and collect the spread if you can execute near mid.
+
+## Not delivered: the OIS decomposition
+
+Splitting the spread into `box - OIS` (financing premium) and `OIS - Treasury`
+(convenience yield) needs a forward SOFR OIS curve. FRED carries only *backward*
+looking SOFR averages (30/90/180-day realised), and CME Term SOFR is licensed.
+So `box - Treasury` here still bundles both components.
