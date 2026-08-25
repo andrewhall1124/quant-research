@@ -6,12 +6,16 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "altair>=6.2.2",
+    "arch>=8.0.0",
     "lxml>=6.1.2",
     "marimo>=0.24.0",
+    "matplotlib>=3.11.1",
     "pandas>=3.0.5",
     "polars>=1.44.0",
     "pyarrow>=25.0.1",
     "python-dotenv>=1.2.3",
     "requests>=2.34.2",
+    "seaborn>=0.13.2",
+    "statsmodels>=0.14.6",
     "thetadata>=1.0.10",
 ]
