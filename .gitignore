@@ -12,5 +12,6 @@ wheels/
 # Env file
 .env
 
-# Pulled data
-data/
+# Pulled data (everything but the layout note)
+data_store/*
+!data_store/README.md

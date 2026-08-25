@@ -6,13 +6,14 @@ endpoints. It is small enough to pull in one pass.
 
 import argparse
 import time
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import polars as pl
 from dotenv import load_dotenv
 
-from common import make_client
+from data_access_layer import paths
+from data_pipelines.common import make_client
 
 load_dotenv()
 
@@ -29,41 +30,79 @@ YIELD_INDICES = {"IRX": "13w", "FVX": "5y", "TNX": "10y", "TYX": "30y"}
 
 RATES = ["SOFR"]
 
+# ThetaData rejects any history request spanning more than 365 days, and the
+# free tier refuses index history starting before roughly 2024-01-01 (earlier
+# starts are quoted as VALUE / STANDARD / PROFESSIONAL by depth). Longer
+# windows are stitched from year-sized chunks.
+MAX_REQUEST_DAYS = 360
+FREE_INDEX_HISTORY_START = date(2024, 1, 1)
+
+
+def date_chunks(
+    start_date: date, end_date: date, span_days: int = MAX_REQUEST_DAYS
+) -> list[tuple[date, date]]:
+    chunks = []
+    chunk_start = start_date
+    while chunk_start <= end_date:
+        chunk_end = min(chunk_start + timedelta(days=span_days), end_date)
+        chunks.append((chunk_start, chunk_end))
+        chunk_start = chunk_end + timedelta(days=1)
+    return chunks
+
 
 def fetch_indices(symbols: list[str], start_date: date, end_date: date) -> pl.DataFrame:
     client = make_client()
     frames = []
     for symbol in symbols:
-        try:
-            frames.append(
-                client.index_history_eod(symbol, start_date, end_date)
-                .select(
+        for chunk_start, chunk_end in date_chunks(start_date, end_date):
+            try:
+                frames.append(
+                    client.index_history_eod(symbol, chunk_start, chunk_end)
+                    .select(
                     pl.col("created").dt.date().alias("date"),
                     pl.lit(symbol).alias("symbol"),
                     pl.col("open"),
                     pl.col("high"),
-                    pl.col("low"),
-                    pl.col("close"),
+                        pl.col("low"),
+                        pl.col("close"),
+                    )
                 )
-            )
-        except Exception as error:
-            print(f"  skipped {symbol}: {str(error).splitlines()[0][:60]}")
-    return pl.concat(frames, how="vertical_relaxed").sort("date", "symbol")
+            except Exception as error:
+                detail = [
+                    line for line in str(error).splitlines() if "details" in line
+                ]
+                reason = detail[0].strip()[:90] if detail else str(error)[:90]
+                print(f"  skipped {symbol} {chunk_start}..{chunk_end}: {reason}")
+    if not frames:
+        raise RuntimeError(
+            "no index data returned; on the free tier the history starts around"
+            f" {FREE_INDEX_HISTORY_START}"
+        )
+    return (
+        pl.concat(frames, how="vertical_relaxed")
+        .unique(["date", "symbol"])
+        .sort("date", "symbol")
+    )
 
 
 def fetch_rates(start_date: date, end_date: date) -> pl.DataFrame:
     client = make_client()
     frames = []
     for symbol in RATES:
-        rate_df = client.interest_rate_history_eod(symbol, start_date, end_date)
-        frames.append(
-            rate_df.select(
-                pl.col("created").str.strptime(pl.Date, "%Y-%m-%d").alias("date"),
-                pl.lit(symbol).alias("symbol"),
-                (pl.col("rate") / 100).alias("rate"),
+        for chunk_start, chunk_end in date_chunks(start_date, end_date):
+            rate_df = client.interest_rate_history_eod(symbol, chunk_start, chunk_end)
+            frames.append(
+                rate_df.select(
+                    pl.col("created").str.strptime(pl.Date, "%Y-%m-%d").alias("date"),
+                    pl.lit(symbol).alias("symbol"),
+                    (pl.col("rate") / 100).alias("rate"),
+                )
             )
-        )
-    return pl.concat(frames, how="vertical_relaxed").sort("date", "symbol")
+    return (
+        pl.concat(frames, how="vertical_relaxed")
+        .unique(["date", "symbol"])
+        .sort("date", "symbol")
+    )
 
 
 def run(start_date: date, end_date: date, output_dir: str) -> None:
@@ -72,7 +111,7 @@ def run(start_date: date, end_date: date, output_dir: str) -> None:
     started = time.perf_counter()
 
     index_df = fetch_indices(INDICES + VOL_INDICES, start_date, end_date)
-    index_df.write_parquet(out / "indices_2025.parquet")
+    index_df.write_parquet(paths.INDICES)
 
     # Yield indices carry a 10x scaling, so keep them as a separate curve table.
     raw_yield_df = fetch_indices(list(YIELD_INDICES), start_date, end_date)
@@ -81,10 +120,10 @@ def run(start_date: date, end_date: date, output_dir: str) -> None:
         pl.col("symbol").replace_strict(YIELD_INDICES).alias("tenor"),
         (pl.col("close") / 1000).alias("yield"),
     ).sort("date", "tenor")
-    yield_df.write_parquet(out / "yields_2025.parquet")
+    yield_df.write_parquet(paths.YIELDS)
 
     rate_df = fetch_rates(start_date, end_date)
-    rate_df.write_parquet(out / "rates_2025.parquet")
+    rate_df.write_parquet(paths.RATES)
 
     print(
         f"\ndone in {time.perf_counter() - started:.1f}s"
@@ -97,9 +136,11 @@ def run(start_date: date, end_date: date, output_dir: str) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--start", type=date.fromisoformat, default=date(2025, 1, 1))
+    parser.add_argument(
+        "--start", type=date.fromisoformat, default=FREE_INDEX_HISTORY_START
+    )
     parser.add_argument("--end", type=date.fromisoformat, default=date(2025, 12, 31))
-    parser.add_argument("--output-dir", default="data")
+    parser.add_argument("--output-dir", default=str(paths.DATA_STORE))
     args = parser.parse_args()
 
     index_df, yield_df, rate_df = run(args.start, args.end, args.output_dir)

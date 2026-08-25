@@ -15,6 +15,8 @@ import requests
 from dotenv import load_dotenv
 from thetadata import ThetaClient
 
+from data_access_layer import paths
+
 load_dotenv()
 
 CURRENT_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
@@ -130,7 +132,7 @@ def run(start_date: date, end_date: date, output_path: str) -> pl.DataFrame:
 
 
 if __name__ == "__main__":
-    universe_df = run(date(2025, 1, 1), date(2025, 12, 31), "data/universe.parquet")
+    universe_df = run(date(2025, 1, 1), date(2025, 12, 31), str(paths.UNIVERSE))
     print(universe_df)
     print(f"\ntrading days: {universe_df['date'].n_unique()}")
     print(f"unique tickers over the year: {universe_df['ticker'].n_unique()}")

@@ -12,7 +12,8 @@ from pathlib import Path
 import polars as pl
 from dotenv import load_dotenv
 
-from common import fetch_many, load_universe_tickers, make_client
+from data_access_layer import paths
+from data_pipelines.common import fetch_many, load_universe_tickers, make_client
 
 load_dotenv()
 
@@ -74,8 +75,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--start", type=date.fromisoformat, default=date(2025, 1, 1))
     parser.add_argument("--end", type=date.fromisoformat, default=date(2025, 12, 31))
-    parser.add_argument("--universe", default="data/universe.parquet")
-    parser.add_argument("--output-dir", default="data/options_2025")
+    parser.add_argument("--universe", default=str(paths.UNIVERSE))
+    parser.add_argument("--output-dir", default=str(paths.OPTIONS_DIR))
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument(
