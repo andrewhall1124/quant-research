@@ -10,10 +10,16 @@ Run from the repo root:
 uv run pipelines/universe.py                  # point-in-time S&P 500 membership
 uv run pipelines/underlying.py                # EOD stock prices for that universe
 uv run pipelines/options.py                   # EOD option chains for that universe
+uv run pipelines/options.py --symbols SPX,SPXW,XSP --output-dir data/index_options_2025
 ```
 
 `underlying.py` and `options.py` take `--start`, `--end`, `--workers`, and
 `--limit` (sample the first N tickers, for benchmarking).
+
+`options.py --symbols` takes a comma-separated list of roots and bypasses the
+universe file, which is how index chains (SPX, SPXW, XSP) get pulled — they are
+not constituents. Pair it with `--output-dir` to keep them out of the
+single-name directory.
 
 `universe.py` reconstructs membership by walking Wikipedia's current
 constituent list backwards through the changes table. The trading calendar
