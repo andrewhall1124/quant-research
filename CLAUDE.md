@@ -68,10 +68,28 @@ so an interrupted pull can just be re-run.
 
 ### Findings so far
 
-`research/volatility/` — implied vol beats trailing RV, ARCH(5) and GARCH(1,1)
-at forecasting both forward realized and forward implied vol, at 5 and 21 days,
-and encompasses all three. It is well-scaled (MZ slope ≈ 1) but biased high by
-~3.3 vol points, the variance risk premium. Nothing forecasts forward implied
-vol at a month; ARCH/GARCH have ~zero explanatory power there. A 30-day ATM IV
-rebuilt from the SPXW chain correlates 0.991 with VIX and sits 3.7 points below
-it (put skew), so VIX is a safe stand-in for information questions.
+`research/volatility/` — nine-model horse race, SPX 2024-2025. Implied vol
+leads on every metric at 5 and 21 days on both targets and dominates the
+encompassing regression, but **GJR-GARCH ties it statistically** on forward
+realized vol (DM t = -0.47, -0.14): the gap to return-based models was an
+asymmetry story, not a model-class story. IV is well-scaled (MZ slope ≈ 1) but
+biased high ~3.3 vol points — the variance risk premium. Nothing forecasts
+forward implied vol at a month. EWMA is the weakest model in the study.
+
+Two traps found the hard way, both worth remembering before adding models:
+
+- **Target-fitted models (HAR, IV-adj) fail out of sample here**, HAR with
+  R² = 0.000 at h=21. Diagnosed, not assumed: until April 2025 the training
+  window is calm, so the fitted slope on implied vol is 0.25 and HAR's monthly
+  coefficient is negative; both go flat through the one episode that matters
+  and only re-learn afterwards (`figures/09_coefficient_instability.png`). Any
+  model fitted to the target needs a sample with more than one regime.
+- **Never rank on RMSE alone.** Shrunk forecasts win squared error by sitting
+  near the mean while explaining nothing — ARCH beats RV on RMSE at h=21 with
+  R² of 0.001. Always report MZ R² alongside.
+
+Range estimators (Parkinson/GK/RS/GKYZ) are 3-6x less noisy per day than
+squared returns and are free given OHLC; only GKYZ includes the overnight gap,
+so only GKYZ is scale-comparable to close-to-close. A 30-day ATM IV rebuilt
+from the SPXW chain correlates 0.991 with VIX and sits 3.7 points below it (put
+skew), so VIX is a safe stand-in for information questions.

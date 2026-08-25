@@ -18,7 +18,7 @@ Needs `indices.parquet` (SPX + VIX complex) and, for the validation figure,
 | File | What it is |
 |---|---|
 | `analysis.py` | the whole study: panel, horse race, scoring, every figure |
-| `volatility_models.py` | the four forecasters, all returning annualized decimal vol for `t+1..t+h` |
+| `volatility_models.py` | the forecasters and the range estimators, all returning annualized decimal vol for `t+1..t+h` |
 | `implied_vol.py` | Black-76 inversion of the SPXW chain, used only to check VIX |
 | `figures/*.png` | regenerated on every run |
 | `results/*.csv` | the numbers behind the report's tables |
@@ -28,10 +28,22 @@ Needs `indices.parquet` (SPX + VIX complex) and, for the validation figure,
 - **Sample** SPX daily closes, 2024-01-03 to 2025-12-31 (501 trading days).
 - **Horizons** 5 and 21 trading days, each paired with the implied index that
   spans it: VIX9D and VIX.
-- **Forecasts** trailing RV, ARCH(5), GARCH(1,1), and IV — all using
-  information through `t` only. ARCH/GARCH use an expanding window with a
-  250-day burn-in and refit every 5 origins, so every number is out-of-sample.
-- **Targets** realized vol over `t+1..t+h`, and the implied index at `t+h`.
+- **Forecasts** nine models, all using information through `t` only:
+
+  | Family | Models |
+  |---|---|
+  | naive | `RV` trailing close-to-close, `RANGE` trailing GKYZ |
+  | exponential | `EWMA` RiskMetrics λ=0.94 |
+  | conditional variance | `ARCH`(5), `GARCH`(1,1), `GJR`(1,1,1) |
+  | option market | `IV` (VIX9D / VIX) |
+  | fitted to the target | `HAR` (Corsi), `IV-adj` (premium-adjusted IV) |
+
+  ARCH/GARCH/GJR use an expanding window with a 250-day burn-in, refitting
+  every 5 origins. HAR and IV-adj refit at every origin, and may only train on
+  origins whose target had already been realized — `s + h <= t`. Every number
+  is out-of-sample.
+- **Targets** realized vol over `t+1..t+h`, the implied index at `t+h`, and
+  the same realized vol measured with the GKYZ range estimator (robustness).
 - **Scoring** RMSE, MAE, bias, correlation, Mincer-Zarnowitz regression,
   Diebold-Mariano tests against IV, and a joint encompassing regression.
 - **Inference** horizons overlap, so every regression uses Newey-West errors
@@ -39,4 +51,10 @@ Needs `indices.parquet` (SPX + VIX complex) and, for the validation figure,
   too large.
 
 Volatility is defined `sqrt(252 · mean(r²))` everywhere — target, predictor and
-GARCH forecast alike — so the comparison is like for like.
+GARCH forecast alike — so the comparison is like for like. Range estimators
+follow the same convention on their own daily variance series.
+
+Only GKYZ (Garman-Klass plus the overnight term) is scale-comparable to
+close-to-close; Parkinson, Garman-Klass and Rogers-Satchell are intraday-only
+and sit ~3 vol points lower, so they appear in the estimator comparison but not
+as a target.
