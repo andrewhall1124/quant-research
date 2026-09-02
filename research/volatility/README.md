@@ -20,9 +20,9 @@ Needs `indices.parquet` (SPX + VIX complex) and, for the validation figure,
 | `analysis.py` | the whole study: panel, horse race, scoring, every figure |
 | `implied_vol.py` | Black-76 inversion of the SPXW chain, used only to check VIX |
 
-Shared with `research/single_name_vol/`: `research/vol_models.py` (the four
+Shared with `research/single_name_vol/`: `tools/vol_models.py` (the four
 forecasters, all returning annualized decimal vol for `t+1..t+h`) and
-`research/scoring.py` (Mincer-Zarnowitz, the two losses, Diebold-Mariano).
+`tools/scoring.py` (Mincer-Zarnowitz, the two losses, Diebold-Mariano).
 | `figures/*.png` | regenerated on every run |
 | `results/*.csv` | the numbers behind the report's tables |
 

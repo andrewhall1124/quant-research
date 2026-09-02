@@ -27,10 +27,10 @@ history is pulled.
 
 Run it:
 
-    uv run python -m research.backtest.panel --refresh      # ~minutes, cached
+    uv run python -m tools.backtest.panel --refresh      # ~minutes, cached
     uv run python -m research.vrp_cross_section.analysis    # the study
 
-Everything mechanical lives in `research/backtest/`; this module only chooses
+Everything mechanical lives in `tools/backtest/`; this module only chooses
 configurations and scores them. The two axes the study sweeps are the ones the
 strategy is genuinely uncertain about: how much open interest to demand, and
 how long to hold.
@@ -45,16 +45,16 @@ import numpy as np
 import polars as pl
 import seaborn as sns
 
-from research.backtest import BacktestConfig, build_context, run
-from research.backtest import metrics
-from research.backtest.eligibility import (
+from tools.backtest import BacktestConfig, build_context, run
+from tools.backtest import metrics
+from tools.backtest.eligibility import (
     MaxRelativeSpread,
     MinOpenInterest,
     MinStructureVega,
     MinUnderlyingPrice,
 )
-from research.backtest.signals import IvLevelSignal, IvZScoreSignal, VrpSignal
-from research.backtest.structures import AtmStraddle
+from tools.backtest.signals import IvLevelSignal, IvZScoreSignal, VrpSignal
+from tools.backtest.structures import AtmStraddle
 
 HERE = Path(__file__).resolve().parent
 FIGURES = HERE / "figures"

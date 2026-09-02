@@ -30,7 +30,7 @@ parameter rather than a constant.
 import numpy as np
 import polars as pl
 
-from research.vol_models import fit_and_forecast_horizons, trailing_realized_vol
+from tools.vol_models import fit_and_forecast_horizons, trailing_realized_vol
 
 
 class VrpSignal:
@@ -133,12 +133,12 @@ def build_forecasts(
 ) -> pl.DataFrame:
     """Out-of-sample RV forecasts per (symbol, date), using information through t.
 
-    Reuses `research.vol_models`, so the forecasts here are the same objects
+    Reuses `tools.vol_models`, so the forecasts here are the same objects
     `research/single_name_vol/` scored — which is what makes that study's
     calibration findings directly applicable to this signal.
 
     `returns_df` must be split-adjusted log returns; see
-    `research.backtest.engine.build_returns`. Every model is fitted on an
+    `tools.backtest.engine.build_returns`. Every model is fitted on an
     expanding window at each origin, so nothing here sees the future.
     """
     frames = []

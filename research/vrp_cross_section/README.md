@@ -12,7 +12,7 @@ not survive its own bid-ask spread.
 
 ```bash
 uv run python -m data_pipelines.open_interest                    # ~3 hr, once
-uv run python -m research.backtest.panel --refresh               # ~5 min, cached
+uv run python -m tools.backtest.panel --refresh               # ~5 min, cached
 uv run python -m research.vrp_cross_section.analysis \
     --forecast-start 2023-06-01                                  # ~10 min
 ```
@@ -20,9 +20,9 @@ uv run python -m research.vrp_cross_section.analysis \
 `--forecast-start` reaches into `underlying_history.parquet` so the GARCH
 burn-in for the VRP variants completes before 2025 rather than eating the first
 half of the sample. `--refresh` refits the vol forecasts; without it they come
-from `research/backtest/results/forecasts.parquet`.
+from `tools/backtest/results/forecasts.parquet`.
 
-All the machinery lives in `research/backtest/` — this module only chooses
+All the machinery lives in `tools/backtest/` — this module only chooses
 configurations and scores them.
 
 ## Files
@@ -52,7 +52,7 @@ configurations and scores them.
   actual quote on the entry and exit days.
 - **Inference** Newey-West with `holding_days` lags on the aggregated daily
   series. Not Driscoll-Kraay — the cross-section is summed away before anything
-  is tested. See `research/backtest/README.md`.
+  is tested. See `tools/backtest/README.md`.
 
 ## The three things that decide the result
 

@@ -29,7 +29,7 @@ import polars as pl
 
 from data_access_layer import paths
 
-PANEL_DIR = paths.REPO_ROOT / "research" / "backtest" / "results"
+PANEL_DIR = paths.REPO_ROOT / "tools" / "backtest" / "results"
 SELECTION_PATH = PANEL_DIR / "selection_panel.parquet"
 MARKS_PATH = PANEL_DIR / "marks_panel.parquet"
 
@@ -186,7 +186,7 @@ def load_selection_panel(path: Path = SELECTION_PATH) -> pl.DataFrame:
     if not path.exists():
         raise FileNotFoundError(
             f"{path} not found. Build it with:\n"
-            "  uv run python -m research.backtest.panel --refresh"
+            "  uv run python -m tools.backtest.panel --refresh"
         )
     return pl.read_parquet(path)
 

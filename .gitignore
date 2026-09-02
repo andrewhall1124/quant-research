@@ -21,7 +21,7 @@ research/*/sample/
 
 # Rebuildable research caches (minutes of compute, not results)
 research/*/results/panel.parquet
-research/backtest/results/*.parquet
+tools/backtest/results/*.parquet
 
 # Playwright MCP scratch output
 .playwright-mcp/

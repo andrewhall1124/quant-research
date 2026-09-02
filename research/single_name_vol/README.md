@@ -27,8 +27,8 @@ concatenate the parts. `analysis.py` reads the cache and never rebuilds it; pass
 | `results/panel.parquet` | the cached panel (a research artefact, not a dataset — nothing here writes to `data_store/`) |
 | `figures/*.png`, `results/*.csv` | regenerated on every analysis run |
 
-Shared with `research/volatility/`: `research/vol_models.py` (the forecasters)
-and `research/scoring.py` (MZ, the two losses, Diebold-Mariano).
+Shared with `research/volatility/`: `tools/vol_models.py` (the forecasters)
+and `tools/scoring.py` (MZ, the two losses, Diebold-Mariano).
 
 ## Design in brief
 

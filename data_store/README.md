@@ -18,7 +18,7 @@ them means re-deriving each one by hand.
 | `underlying_history.parquet` | `underlying --start 2023-06-01` | `load_underlying(with_history=True)` | 203,496 | 2023-06-01 → 2024-12-31 |
 | `options_2025/<SYM>.parquet` | `options` | `load_option_chain` | 114,366,912 | 2025, 519 files, 1.64 GB |
 | `option_greeks/<SYM>.parquet` | `option_greeks` | `load_option_greeks` | 114,365,634 | 2025, 519 files, 8.5 GB |
-| `open_interest/<SYM>.parquet` | `open_interest` | joined in `research/backtest/panel.py` | 113,008,800 | 2025, 519 files, 438 MB |
+| `open_interest/<SYM>.parquet` | `open_interest` | joined in `tools/backtest/panel.py` | 113,008,800 | 2025, 519 files, 438 MB |
 | `index_options_2025/<ROOT>.parquet` | `options --symbols` | `load_option_chain(index=True)` | 9,785,614 | 2025, 3 files, 0.16 GB |
 | `indices.parquet` | `reference` | `load_indices`, `load_index_closes` | 5,531 | 2024-01-02 → 2025-12-31 |
 | `yields.parquet` | `reference` | `load_yields` | 2,000 | 2024-01-02 → 2025-12-31 |
@@ -36,7 +36,7 @@ no year.
 
 One parquet per symbol, 519 files, 113.0M contract-days, 438 MB. Calendar 2025.
 Written by `data_pipelines.open_interest`; read through the backtest's contract
-panel (`research/backtest/panel.py`), which joins it onto the greeks rows.
+panel (`tools/backtest/panel.py`), which joins it onto the greeks rows.
 
 | column | notes |
 |---|---|

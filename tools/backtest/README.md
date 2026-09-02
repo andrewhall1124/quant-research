@@ -1,4 +1,4 @@
-# research/backtest
+# tools/backtest
 
 A shared backtesting framework for option strategies. Not a study — studies
 live in `research/<topic>/` and import this.
@@ -48,11 +48,11 @@ instrument cannot drift apart.
 ## Usage
 
 ```python
-from research.backtest import BacktestConfig, build_context, run
-from research.backtest.structures import AtmStraddle
-from research.backtest.signals import VrpSignal
-from research.backtest.eligibility import MinOpenInterest, MaxRelativeSpread
-from research.backtest import metrics
+from tools.backtest import BacktestConfig, build_context, run
+from tools.backtest.structures import AtmStraddle
+from tools.backtest.signals import VrpSignal
+from tools.backtest.eligibility import MinOpenInterest, MaxRelativeSpread
+from tools.backtest import metrics
 
 context = build_context(forecast_start=date(2023, 6, 1))   # expensive, once
 config = BacktestConfig(
@@ -68,7 +68,7 @@ metrics.summarize(result.daily_pnl, config.holding_days)
 Build the layer-1 panel first:
 
 ```bash
-uv run python -m research.backtest.panel --refresh
+uv run python -m tools.backtest.panel --refresh
 ```
 
 ## Conventions this framework commits to

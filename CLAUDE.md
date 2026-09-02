@@ -5,9 +5,16 @@ when you learn something that would have saved you time.
 
 ## The one architectural rule
 
-Data flows `data_pipelines/` → `data_store/` → `data_access_layer/` → `research/`.
+Data flows `data_pipelines/` → `data_store/` → `data_access_layer/` →
+`tools/` → `research/`.
 
 - Pipelines are the **only** writers. Research is **never** a writer.
+- `tools/` is reusable machinery, `research/` is studies. A tool answers "how
+  do you backtest an option strategy"; a study answers one question once.
+  Studies import tools; **a tool must never import a study**. `tools/` holds
+  `backtest/` (the option-strategy engine), `vol_models.py` (the forecasters)
+  and `scoring.py` (MZ, the two robust losses, Diebold-Mariano, the covariance
+  helpers).
 - Nothing outside `data_access_layer/paths.py` hardcodes a path under
   `data_store/`. If a new dataset appears, register it in `paths.py` and give it
   a loader in `loaders.py` — do not `pl.read_parquet` from research code.
@@ -92,10 +99,11 @@ so an interrupted pull can just be re-run.
 
 `research/<topic>/` holds `README.md` (what and how to run), `analysis.py`
 (regenerates every figure from scratch), `figures/*.png`, `results/*.csv`, and
-`REPORT.md` (the findings, referencing those pngs). Two modules sit at the
-`research/` root rather than being duplicated per study: `vol_models.py` (the
-forecasters) and `scoring.py` (Mincer-Zarnowitz, the two robust losses,
-Diebold-Mariano, and the covariance helpers).
+`REPORT.md` (the findings, referencing those pngs). Anything shared by more
+than one study lives in `tools/`, not at the `research/` root:
+`tools/vol_models.py` (the forecasters), `tools/scoring.py` (Mincer-Zarnowitz,
+the two robust losses, Diebold-Mariano, and the covariance helpers) and
+`tools/backtest/` (the option-strategy engine).
 
 A study may cache an expensive intermediate under its own `results/` — as
 `single_name_vol/panel.py` does, ~15 minutes of chain inversion — but
@@ -120,7 +128,7 @@ A study may cache an expensive intermediate under its own `results/` — as
   dates share a market factor, so residuals correlate across the panel every
   day, and NW — which only prices the time dimension — overstates t-statistics
   by 3-7x in `research/single_name_vol/`. Use
-  `research.scoring.driscoll_kraay_kwargs`; statsmodels calls it
+  `tools.scoring.driscoll_kraay_kwargs`; statsmodels calls it
   `cov_type="hac-groupsum"`, and its Wald test needs the chi-square form
   because the F form returns NaN there. The correction bites hardest on
   Diebold-Mariano tests, where serial correlation is nearly irrelevant and
@@ -132,7 +140,7 @@ A study may cache an expensive intermediate under its own `results/` — as
 ### Findings so far
 
 `research/vrp_cross_section/` — the first strategy study, and the first user of
-`research/backtest/`. Ranking single names daily on how rich their 30-day ATM
+`tools/backtest/`. Ranking single names daily on how rich their 30-day ATM
 straddle is (each name's IV against its own 60-day history), buying the
 cheapest decile against the richest, vega-weighted and delta-hedged, produces a
 clean gross signal — all ten deciles split on sign, and the raw-IV control
@@ -166,7 +174,9 @@ Trailing RV is the worst forecast in the study under QLIKE while looking
 competitive on RMSE. The variance risk premium is positive in 86-97% of names
 but proportionally smaller than the index's at a month (1.14x vs 1.21x) and
 spans -22 to +14 points. The inverted 30-day ATM IV matches ThetaData's own
-`implied_vol` to a median 0.07 vol points over 7,062 name-days, so the measure
+`implied_vol` to a median 0.074 vol points over 469 names and 51,965 name-days
+— the check used to run on 71 names, and now covers the whole 2025 greeks
+store, with the same answer — so the measure
 is not carrying the result.
 
 `research/volatility/` — implied vol beats trailing RV, ARCH(5) and GARCH(1,1)

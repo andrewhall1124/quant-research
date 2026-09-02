@@ -28,13 +28,13 @@ from pathlib import Path
 import polars as pl
 
 import data_access_layer as dal
-from research.backtest import panel as panel_module
-from research.backtest import pnl as pnl_module
-from research.backtest.config import BacktestConfig, BacktestResult
-from research.backtest.eligibility import apply_filters, describe
-from research.backtest.portfolio import assign_quantiles, size_positions
-from research.backtest.signals import build_forecasts
-from research.backtest.structures import summarize_positions
+from tools.backtest import panel as panel_module
+from tools.backtest import pnl as pnl_module
+from tools.backtest.config import BacktestConfig, BacktestResult
+from tools.backtest.eligibility import apply_filters, describe
+from tools.backtest.portfolio import assign_quantiles, size_positions
+from tools.backtest.signals import build_forecasts
+from tools.backtest.structures import summarize_positions
 
 
 def build_returns(start: date | None = None, end: date | None = None) -> pl.DataFrame:

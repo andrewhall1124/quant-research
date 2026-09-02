@@ -34,7 +34,7 @@ import seaborn as sns
 import statsmodels.api as sm
 
 import data_access_layer as dal
-from research.scoring import (
+from tools.scoring import (
     LOSSES,
     diebold_mariano_pair,
     hac_kwargs,
@@ -42,7 +42,7 @@ from research.scoring import (
     qlike_loss,
 )
 from research.volatility.implied_vol import build_atm_iv_series
-from research.vol_models import (
+from tools.vol_models import (
     fit_and_forecast,
     forward_realized_vol,
     trailing_realized_vol,
