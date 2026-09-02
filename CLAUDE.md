@@ -22,6 +22,13 @@ names for functions, noun names for variables, `_df` suffix for real DataFrames
 only (not LazyFrames, numpy arrays, or scalars). polars everywhere; pandas only
 where a dependency forces it (`arch`, `read_html`).
 
+## Where things are documented
+
+`data_store/README.md` is the data catalog: per-dataset schema, coverage,
+owning pipeline, loader and gotchas. Add a new dataset's quirks there, not
+here. This file keeps only the quirks that change how you *work*, and the
+findings index at the bottom.
+
 ## Data quirks worth remembering
 
 - **Holiday rows in `indices.parquet`.** VIX prints on market holidays where SPX

@@ -44,6 +44,11 @@ EOD history, because ThetaData's calendar endpoint needs a paid tier.
 `options` writes one parquet per symbol and skips symbols already on disk, so
 it is resumable and never holds a full year of chains in memory.
 
+Every dataset is documented in
+**[`data_store/README.md`](data_store/README.md)** — schema, coverage, owning
+pipeline, loader, and the gotchas specific to each one. Read that before
+touching a table you have not used before.
+
 ## Reading data
 
 ```python
