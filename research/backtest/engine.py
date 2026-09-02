@@ -44,10 +44,31 @@ def build_returns(start: date | None = None, end: date | None = None) -> pl.Data
     same reasons: raw prices, six 2025 splits and a spinoff, a reused ticker
     with pre-listing stub rows. Each of `trusted_symbols`, `with_actions`,
     `in_universe` and `split_adjusted_return` removes a different artefact.
+
+    Reaching before 2025 needs care, because the point-in-time membership table
+    only covers the option window — asking for `in_universe` over 2023 returns
+    nothing. So the two periods are spliced rather than loaded together: the
+    option window is universe-restricted as usual, and the pre-sample history
+    is restricted to the symbols that survived that restriction. The history is
+    only ever used to burn a volatility model in, never to form a position, so
+    it needs to be clean rather than point-in-time.
     """
-    prices_df = dal.load_underlying(
-        dal.trusted_symbols(), start, end, with_actions=True, in_universe=True
+    panel_df = dal.load_underlying(
+        dal.trusted_symbols(), None, end, with_actions=True, in_universe=True
     )
+    frames = [panel_df]
+
+    if start is not None and start < panel_df["date"].min():
+        history_df = dal.load_underlying(
+            panel_df["symbol"].unique().to_list(),
+            start,
+            panel_df["date"].min(),
+            with_actions=True,
+            with_history=True,
+        ).filter(pl.col("date") < panel_df["date"].min())
+        frames.insert(0, history_df)
+
+    prices_df = pl.concat(frames, how="vertical_relaxed").unique(subset=["symbol", "date"])
     return (
         prices_df.sort("symbol", "date")
         .with_columns(dal.split_adjusted_return().over("symbol"))

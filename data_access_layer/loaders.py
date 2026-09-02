@@ -65,6 +65,7 @@ def load_underlying(
     drop_zero_prices: bool = True,
     with_actions: bool = False,
     in_universe: bool = False,
+    with_history: bool = False,
 ) -> pl.DataFrame:
     """EOD stock prices. The raw `created` timestamp becomes a plain `date`.
 
@@ -75,14 +76,33 @@ def load_underlying(
     `with_actions` adds `split_ratio` and `dividend` for that date from the
     corporate-actions table, so returns can be adjusted at the point of use.
 
+    `with_history` prepends `underlying_history.parquet` (2023-06 to 2024-12),
+    which exists so a volatility model can burn in *before* the option sample
+    starts instead of eating the first months of it. It is off by default so
+    that every study written against the 2025 panel keeps loading exactly what
+    it always did. Note that `in_universe` restricts to point-in-time index
+    membership and the membership table only covers the option window, so the
+    two are mutually exclusive in practice — pass history for model fitting,
+    not for a universe-restricted panel.
+
     `in_universe` keeps only (symbol, date) pairs that were actually in the
     index that day. Besides being what a universe-based study wants, it drops
     the rows ThetaData returns for a symbol *before* its listing: SOLS has four
     Jan-Apr 2025 rows priced at $0.0001, with volume, months before it began
     trading on 2025-10-30.
     """
+    sources = [require(paths.UNDERLYING, "data_pipelines.underlying")]
+    if with_history:
+        sources.insert(
+            0,
+            require(
+                paths.UNDERLYING_HISTORY,
+                "data_pipelines.underlying --start 2023-06-01 --end 2024-05-30"
+                " --output data_store/underlying_history.parquet",
+            ),
+        )
     frame = (
-        pl.scan_parquet(require(paths.UNDERLYING, "data_pipelines.underlying"))
+        pl.scan_parquet(sources)
         .with_columns(pl.col("created").dt.date().alias("date"))
         .select("date", "symbol", "open", "high", "low", "close", "volume", "bid", "ask")
     )

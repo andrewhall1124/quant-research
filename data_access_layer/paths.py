@@ -14,6 +14,10 @@ DATA_STORE = REPO_ROOT / "data_store"
 # pulls stay year-stamped.
 UNIVERSE = DATA_STORE / "universe.parquet"
 UNDERLYING = DATA_STORE / "underlying_2025.parquet"
+# Pre-sample stock history, so a model burn-in does not consume formation
+# dates in the option window. Kept as its own file rather than merged into
+# UNDERLYING so that every existing study loads exactly what it always did.
+UNDERLYING_HISTORY = DATA_STORE / "underlying_history.parquet"
 INDICES = DATA_STORE / "indices.parquet"
 YIELDS = DATA_STORE / "yields.parquet"
 RATES = DATA_STORE / "rates.parquet"
@@ -37,6 +41,7 @@ INDEX_OPTIONS_DIR = DATA_STORE / "index_options_2025"
 DATASETS = {
     "universe": UNIVERSE,
     "underlying": UNDERLYING,
+    "underlying_history": UNDERLYING_HISTORY,
     "indices": INDICES,
     "yields": YIELDS,
     "rates": RATES,
