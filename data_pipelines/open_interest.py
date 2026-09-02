@@ -109,6 +109,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--start", type=date.fromisoformat, default=date(2025, 1, 1))
     parser.add_argument("--end", type=date.fromisoformat, default=date(2025, 12, 31))
+    parser.add_argument(
+        "--year",
+        type=int,
+        default=None,
+        help=(
+            "backfill one calendar year: sets --start, --end and the"
+            " year-stamped output directory in one flag"
+        ),
+    )
     parser.add_argument("--universe", default=str(paths.UNIVERSE))
     parser.add_argument("--output", default=str(paths.OPEN_INTEREST_DIR))
     parser.add_argument("--workers", type=int, default=4)
@@ -116,8 +125,15 @@ def main() -> None:
     parser.add_argument("--symbols", nargs="+", default=None)
     args = parser.parse_args()
 
+    start_date, end_date = args.start, args.end
+    output_dir = args.output
+    if args.year is not None:
+        start_date = date(args.year, 1, 1)
+        end_date = date(args.year, 12, 31)
+        output_dir = str(paths.option_dir("open_interest", args.year))
+
     run(
-        args.start, args.end, args.universe, args.output,
+        start_date, end_date, args.universe, output_dir,
         args.workers, args.limit, args.symbols,
     )
 

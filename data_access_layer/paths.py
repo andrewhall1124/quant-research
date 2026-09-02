@@ -32,14 +32,65 @@ TICKER_CHECK = DATA_STORE / "ticker_check.parquet"
 # earnings-timing signal.
 EARNINGS = DATA_STORE / "earnings.parquet"
 
+# Point-in-time membership for the backfill years, kept apart from
+# `universe.parquet` so the 2025 sample every existing study loads is exactly
+# the file it has always been.
+UNIVERSE_HISTORY = DATA_STORE / "universe_history.parquet"
+
 # One parquet per symbol; too large to keep in a single file.
 OPTIONS_DIR = DATA_STORE / "options_2025"
 OPEN_INTEREST_DIR = DATA_STORE / "open_interest"
 OPTION_GREEKS_DIR = DATA_STORE / "option_greeks"
 INDEX_OPTIONS_DIR = DATA_STORE / "index_options_2025"
 
+# The year the store was first built for. Every per-symbol option directory is
+# year-stamped so a backfill year can never be confused with — or silently
+# skipped because of — the original sample. The two directories that predate
+# the stamping convention (`option_greeks`, `open_interest`) keep their bare
+# names for 2025 rather than being renamed under running sessions.
+SAMPLE_YEAR = 2025
+
+OPTION_DIR_PREFIXES = {
+    "options": "options",
+    "open_interest": "open_interest",
+    "option_greeks": "option_greeks",
+    "index_options": "index_options",
+}
+UNSTAMPED_2025_DIRS = {"open_interest", "option_greeks"}
+
+
+def option_dir(dataset: str, year: int = SAMPLE_YEAR) -> Path:
+    """The directory holding one year of one per-symbol option dataset."""
+    if dataset not in OPTION_DIR_PREFIXES:
+        raise KeyError(
+            f"unknown option dataset {dataset!r};"
+            f" expected one of {sorted(OPTION_DIR_PREFIXES)}"
+        )
+    if year == SAMPLE_YEAR and dataset in UNSTAMPED_2025_DIRS:
+        return DATA_STORE / OPTION_DIR_PREFIXES[dataset]
+    return DATA_STORE / f"{OPTION_DIR_PREFIXES[dataset]}_{year}"
+
+
+def available_years(dataset: str) -> list[int]:
+    """Which years of a per-symbol option dataset are actually on disk."""
+    prefix = OPTION_DIR_PREFIXES[dataset]
+    years = []
+    for candidate in DATA_STORE.glob(f"{prefix}_*"):
+        if not candidate.is_dir():
+            continue
+        suffix = candidate.name[len(prefix) + 1 :]
+        # `options_2025` and `index_options_2025` are year-stamped; the glob
+        # also catches `option_greeks_2024`, but not a non-year suffix.
+        if suffix.isdigit():
+            years.append(int(suffix))
+    if dataset in UNSTAMPED_2025_DIRS and (DATA_STORE / prefix).is_dir():
+        years.append(SAMPLE_YEAR)
+    return sorted(set(years))
+
+
 DATASETS = {
     "universe": UNIVERSE,
+    "universe_history": UNIVERSE_HISTORY,
     "underlying": UNDERLYING,
     "underlying_history": UNDERLYING_HISTORY,
     "indices": INDICES,
@@ -56,21 +107,32 @@ DATASETS = {
 }
 
 
-def option_chain_path(symbol: str, index: bool = False, greeks: bool = False) -> Path:
-    """Path to one symbol's chain.
+def option_dataset_name(index: bool = False, greeks: bool = False) -> str:
+    if greeks:
+        return "option_greeks"
+    return "index_options" if index else "options"
+
+
+def option_chain_path(
+    symbol: str,
+    index: bool = False,
+    greeks: bool = False,
+    year: int = SAMPLE_YEAR,
+) -> Path:
+    """Path to one symbol's chain for one year.
 
     Index roots live in their own directory, and the greeks pull is a third
     directory rather than extra columns on the first: it is a separate,
     slower endpoint and is not expected to cover the same symbols.
     """
-    if greeks:
-        return OPTION_GREEKS_DIR / f"{symbol.upper()}.parquet"
-    directory = INDEX_OPTIONS_DIR if index else OPTIONS_DIR
+    directory = option_dir(option_dataset_name(index, greeks), year)
     return directory / f"{symbol.upper()}.parquet"
 
 
-def available_option_symbols(index: bool = False, greeks: bool = False) -> list[str]:
-    directory = OPTION_GREEKS_DIR if greeks else (INDEX_OPTIONS_DIR if index else OPTIONS_DIR)
+def available_option_symbols(
+    index: bool = False, greeks: bool = False, year: int = SAMPLE_YEAR
+) -> list[str]:
+    directory = option_dir(option_dataset_name(index, greeks), year)
     if not directory.exists():
         return []
     return sorted(path.stem for path in directory.glob("*.parquet"))

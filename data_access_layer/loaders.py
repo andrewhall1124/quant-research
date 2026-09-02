@@ -50,9 +50,59 @@ def only_symbols(
     return frame.filter(pl.col(column).is_in(wanted))
 
 
-def load_universe(as_of: date | None = None) -> pl.DataFrame:
-    """Point-in-time S&P 500 membership, one row per (date, ticker)."""
+def resolve_option_paths(
+    symbol: str,
+    dataset: str,
+    years: int | list[int] | None,
+    pipeline: str,
+) -> list:
+    """The parquet files holding one symbol across the requested years.
+
+    `years` defaults to `paths.SAMPLE_YEAR` at every call site rather than to
+    "everything on disk", so landing a backfill year never silently changes
+    what a study that asked for no window already loads. Pass `years=None` to
+    opt in to the full history.
+    """
+    wanted = paths.available_years(dataset) if years is None else (
+        [years] if isinstance(years, int) else list(years)
+    )
+    found = [
+        path
+        for path in (
+            paths.option_dir(dataset, year) / f"{symbol.upper()}.parquet"
+            for year in sorted(set(wanted))
+        )
+        if path.exists()
+    ]
+    if not found:
+        # Name the years actually asked for, since the usual cause is a year
+        # that was never backfilled rather than a symbol that does not exist.
+        raise MissingDataset(
+            f"no {dataset} on disk for {symbol.upper()} in"
+            f" {sorted(set(wanted)) or 'any year'}. Create it with:\n"
+            f"  uv run python -m {pipeline}"
+        )
+    return found
+
+
+def load_universe(
+    as_of: date | None = None, with_history: bool = False
+) -> pl.DataFrame:
+    """Point-in-time S&P 500 membership, one row per (date, ticker).
+
+    `with_history` prepends `universe_history.parquet`, the reconstruction for
+    the backfill years. It is a separate file because membership that far back
+    is walked further through Wikipedia's changes table and carries more
+    accumulated error than the 2025 sample.
+    """
     frame = pl.scan_parquet(require(paths.UNIVERSE, "data_pipelines.universe"))
+    if with_history:
+        history_path = require(
+            paths.UNIVERSE_HISTORY, "data_pipelines.universe --history"
+        )
+        frame = pl.concat(
+            [pl.scan_parquet(history_path), frame], how="vertical_relaxed"
+        ).unique(["date", "ticker"])
     if as_of is not None:
         frame = frame.filter(pl.col("date") == as_of)
     return frame.sort("date", "ticker").collect()
@@ -287,19 +337,26 @@ def load_option_chain(
     with_spot: bool = False,
     max_moneyness: float | None = None,
     columns: list[str] | None = None,
+    years: int | list[int] | None = paths.SAMPLE_YEAR,
 ) -> pl.DataFrame:
     """One symbol's EOD chain, with derived `date`, `dte` and `mid` columns.
 
     `with_spot` joins the underlying close and adds `moneyness`
     (strike / spot - 1); `max_moneyness` filters on its absolute value and
     implies `with_spot`. Set `index=True` for index roots (SPX, SPXW, XSP).
+
+    `years` selects which backfill years to read; it defaults to the 2025
+    sample, so a study written before the backfill loads exactly what it
+    always did. Pass `years=None` for every year on disk. Note that
+    `with_spot` needs a stock tier that only reaches 2023-06-01, so it cannot
+    be satisfied for the deeper years.
     """
-    path = require(
-        paths.option_chain_path(symbol, index),
+    chain_paths = resolve_option_paths(
+        symbol, paths.option_dataset_name(index, False), years,
         f"data_pipelines.options --symbols {symbol.upper()}",
     )
     frame = (
-        pl.scan_parquet(path)
+        pl.scan_parquet(chain_paths)
         .with_columns(
             pl.col("created").dt.date().alias("date"),
             pl.col("expiration").str.strptime(pl.Date, "%Y-%m-%d").alias("expiration"),
@@ -341,6 +398,7 @@ def load_option_greeks(
     max_iv_error: float | None = None,
     quoted_only: bool = False,
     columns: list[str] | None = None,
+    years: int | list[int] | None = paths.SAMPLE_YEAR,
 ) -> pl.DataFrame:
     """One symbol's EOD chain with greeks, IV and the underlying price.
 
@@ -361,13 +419,18 @@ def load_option_greeks(
 
     `quoted_only` drops contracts with no quote, which is also where
     `implied_vol` comes back as 0.0 rather than null.
+
+    `years` defaults to the 2025 sample; pass `years=None` for every
+    backfilled year on disk. Because `underlying_price` rides on the row, this
+    loader — unlike `load_option_chain` — needs no stock tier and so is usable
+    across the whole option history.
     """
-    path = require(
-        paths.OPTION_GREEKS_DIR / f"{symbol.upper()}.parquet",
+    greek_paths = resolve_option_paths(
+        symbol, "option_greeks", years,
         f"data_pipelines.option_greeks --symbols {symbol.upper()}",
     )
     frame = (
-        pl.scan_parquet(path)
+        pl.scan_parquet(greek_paths)
         .with_columns(
             pl.col("underlying_timestamp").dt.date().alias("date"),
             pl.col("expiration").str.strptime(pl.Date, "%Y-%m-%d").alias("expiration"),
@@ -398,6 +461,44 @@ def load_option_greeks(
     if columns is not None:
         frame = frame.select(columns)
     return frame.collect()
+
+
+def load_open_interest(
+    symbol: str,
+    start: date | None = None,
+    end: date | None = None,
+    rights: str | list[str] | None = None,
+    min_open_interest: int | None = None,
+    years: int | list[int] | None = paths.SAMPLE_YEAR,
+) -> pl.DataFrame:
+    """One symbol's EOD open interest, with a derived `date` and `expiration`.
+
+    Open interest is stamped pre-open (~06:30 ET) and reports the position
+    standing after the *previous* close, which is the number a trader forming
+    at today's close actually knows. So `date` joins straight onto a chain row
+    for the same session with no shift, but the figure is settled and one day
+    stale — see `data_store/README.md`.
+
+    `min_open_interest` is the liquidity screen most strategy code wants; it
+    drops contracts nobody holds rather than merely ones that did not trade.
+    """
+    oi_paths = resolve_option_paths(
+        symbol, "open_interest", years,
+        f"data_pipelines.open_interest --symbols {symbol.upper()}",
+    )
+    frame = pl.scan_parquet(oi_paths).with_columns(
+        pl.col("timestamp").dt.date().alias("date"),
+        pl.col("expiration").str.strptime(pl.Date, "%Y-%m-%d").alias("expiration"),
+    )
+
+    frame = in_window(frame, start, end)
+    if rights is not None:
+        wanted = [rights] if isinstance(rights, str) else list(rights)
+        frame = frame.filter(pl.col("right").is_in([right.upper() for right in wanted]))
+    if min_open_interest is not None:
+        frame = frame.filter(pl.col("open_interest") >= min_open_interest)
+
+    return frame.sort("date", "expiration", "strike", "right").collect()
 
 
 def spot_series(symbol: str, index: bool = False) -> pl.DataFrame:

@@ -5,9 +5,10 @@ backwards through Wikipedia's "selected changes" table. Adapted from the
 nt-data-pipelines universe flow, minus Prefect/ClickHouse.
 """
 
+import argparse
 import io
 import os
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 import polars as pl
@@ -33,15 +34,34 @@ def fetch_first_table(url: str) -> pd.DataFrame:
 
 
 def get_trading_calendar(start_date: date, end_date: date) -> list[date]:
-    """Trading days, taken from SPY's EOD history (free-tier friendly)."""
+    """Trading days: weekdays minus the exchange's full closures.
+
+    Taken from ThetaData's own `calendar_year`, which is free at every tier and
+    reaches back to 2016 — unlike SPY's EOD history, which this used to read
+    and which the free stock tier refuses before 2023-06-01. Checked against
+    that older SPY-derived calendar over 2025: the two agree on all 250
+    sessions, including the 2025-01-09 day of mourning.
+
+    Early closes (half days) are trading days and are deliberately kept; only
+    `full_close` rows are dropped.
+    """
     client = ThetaClient(dataframe_type="polars")
-    spy_df = client.stock_history_eod("SPY", start_date, end_date)
-    return (
-        spy_df.select(pl.col("created").dt.date().alias("date"))
-        .unique()
-        .sort("date")["date"]
-        .to_list()
-    )
+    closed_dates = set()
+    for year in range(start_date.year, end_date.year + 1):
+        calendar_df = client.calendar_year(str(year))
+        closed_dates |= set(
+            calendar_df.filter(pl.col("type") == "full_close")["date"]
+            .str.strptime(pl.Date, "%Y-%m-%d")
+            .to_list()
+        )
+
+    sessions = []
+    day = start_date
+    while day <= end_date:
+        if day.weekday() < 5 and day not in closed_dates:
+            sessions.append(day)
+        day += timedelta(days=1)
+    return sessions
 
 
 def clean_current_constituents(current_df: pd.DataFrame) -> pl.DataFrame:
@@ -131,9 +151,38 @@ def run(start_date: date, end_date: date, output_path: str) -> pl.DataFrame:
     return universe_df
 
 
-if __name__ == "__main__":
-    universe_df = run(date(2025, 1, 1), date(2025, 12, 31), str(paths.UNIVERSE))
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--start", type=date.fromisoformat, default=date(2025, 1, 1))
+    parser.add_argument("--end", type=date.fromisoformat, default=date(2025, 12, 31))
+    parser.add_argument("--output", default=None)
+    parser.add_argument(
+        "--history",
+        action="store_true",
+        help=(
+            "write universe_history.parquet for the backfill years"
+            " (defaults to 2016-01-01 .. 2024-12-31) instead of universe.parquet"
+        ),
+    )
+    args = parser.parse_args()
+
+    start_date, end_date = args.start, args.end
+    output_path = args.output
+    if args.history:
+        if start_date == date(2025, 1, 1):
+            start_date = date(2016, 1, 1)
+        if end_date == date(2025, 12, 31):
+            end_date = date(2024, 12, 31)
+        output_path = output_path or str(paths.UNIVERSE_HISTORY)
+    output_path = output_path or str(paths.UNIVERSE)
+
+    universe_df = run(start_date, end_date, output_path)
     print(universe_df)
-    print(f"\ntrading days: {universe_df['date'].n_unique()}")
-    print(f"unique tickers over the year: {universe_df['ticker'].n_unique()}")
+    print(f"\nwrote {output_path}")
+    print(f"trading days: {universe_df['date'].n_unique()}")
+    print(f"unique tickers over the window: {universe_df['ticker'].n_unique()}")
     print(f"members per day: {universe_df.group_by('date').len()['len'].describe()}")
+
+
+if __name__ == "__main__":
+    main()

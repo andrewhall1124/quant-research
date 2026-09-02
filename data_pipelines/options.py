@@ -75,6 +75,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--start", type=date.fromisoformat, default=date(2025, 1, 1))
     parser.add_argument("--end", type=date.fromisoformat, default=date(2025, 12, 31))
+    parser.add_argument(
+        "--year",
+        type=int,
+        default=None,
+        help=(
+            "backfill one calendar year: sets --start, --end and the"
+            " year-stamped output directory in one flag"
+        ),
+    )
     parser.add_argument("--universe", default=str(paths.UNIVERSE))
     parser.add_argument("--output-dir", default=str(paths.OPTIONS_DIR))
     parser.add_argument("--workers", type=int, default=2)
@@ -86,6 +95,13 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    start_date, end_date = args.start, args.end
+    output_dir = args.output_dir
+    if args.year is not None:
+        start_date = date(args.year, 1, 1)
+        end_date = date(args.year, 12, 31)
+        output_dir = str(paths.option_dir("options", args.year))
+
     symbols = (
         [symbol.strip().upper() for symbol in args.symbols.split(",") if symbol.strip()]
         if args.symbols
@@ -93,10 +109,10 @@ if __name__ == "__main__":
     )
 
     run(
-        args.start,
-        args.end,
+        start_date,
+        end_date,
         args.universe,
-        args.output_dir,
+        output_dir,
         args.workers,
         args.limit,
         symbols,
