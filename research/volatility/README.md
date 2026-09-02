@@ -23,6 +23,9 @@ Needs `indices.parquet` (SPX + VIX complex) and, for the validation figure,
 | `figures/*.png` | regenerated on every run |
 | `results/*.csv` | the numbers behind the report's tables |
 
+Figures `07a`/`07b` are the pairwise DM t-statistic heatmaps (blue = row model
+beats column model).
+
 ## Design in brief
 
 - **Sample** SPX daily closes, 2024-01-03 to 2025-12-31 (501 trading days).
@@ -32,8 +35,15 @@ Needs `indices.parquet` (SPX + VIX complex) and, for the validation figure,
   information through `t` only. ARCH/GARCH use an expanding window with a
   250-day burn-in and refit every 5 origins, so every number is out-of-sample.
 - **Targets** realized vol over `t+1..t+h`, and the implied index at `t+h`.
-- **Scoring** RMSE, MAE, bias, correlation, Mincer-Zarnowitz regression,
-  Diebold-Mariano tests against IV, and a joint encompassing regression.
+- **Scoring** four layers, each answering a different question — see the
+  "How the forecasts are judged" section of REPORT.md:
+  *calibration* (Mincer-Zarnowitz, joint α=0/β=1 Wald test), *accuracy* (RMSE
+  and QLIKE, the two losses that are robust to a noisy vol proxy; MAE and
+  correlation are descriptive only), *pairwise significance* (Diebold-Mariano
+  on the loss differential, every pair under both losses), and *information*
+  (joint encompassing regression). A **MEAN** benchmark — the expanding-window
+  mean, a pure level guess — is carried through the loss and DM tables so
+  "beats a constant" is always testable.
 - **Inference** horizons overlap, so every regression uses Newey-West errors
   with `h` lags. Without that the t-statistics would be roughly `sqrt(h)` times
   too large.

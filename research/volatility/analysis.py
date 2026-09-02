@@ -23,6 +23,7 @@ Design of the horse race, in one place so the report can stay short:
 """
 
 from datetime import date
+from itertools import combinations
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -49,6 +50,11 @@ SAMPLE_END = date(2025, 12, 31)
 BURN_IN = 250
 HORIZONS = {5: "VIX9D", 21: "VIX"}
 MODELS = ["RV", "ARCH", "GARCH", "IV"]
+# A level guess, carried through the loss and Diebold-Mariano tables only: the
+# expanding-window mean of the relevant series, using information through `t`.
+# A forecast that cannot beat this is not a forecast.
+BENCHMARK = "MEAN"
+BENCHMARK_COLUMN = {"target_rv": "mean_rv", "target_iv": "mean_iv"}
 PALETTE = {
     "RV": "#4C72B0",
     "ARCH": "#DD8452",
@@ -104,32 +110,90 @@ def build_forecasts(panel_df: pl.DataFrame, horizon: int, iv_symbol: str) -> pd.
         }
     )
     # Keep only origins where the models are out-of-sample and both targets exist.
-    return frame.iloc[BURN_IN:].dropna().reset_index(drop=True)
+    frame = frame.iloc[BURN_IN:].dropna().reset_index(drop=True)
+    # The constant benchmark: everything known about the level so far, and
+    # nothing about today. Expanding, so it stays honest out of sample.
+    frame["mean_rv"] = frame["RV"].expanding().mean()
+    frame["mean_iv"] = frame["IV"].expanding().mean()
+    return frame
+
+
+def attach_benchmark(frame: pd.DataFrame, target: str) -> pd.DataFrame:
+    """Expose the target's level benchmark under the common name `MEAN`."""
+    return frame.assign(**{BENCHMARK: frame[BENCHMARK_COLUMN[target]]})
 
 
 def mincer_zarnowitz(target: np.ndarray, forecast: np.ndarray, lags: int) -> dict:
-    """Regress target on forecast with Newey-West errors.
+    """Regress target on forecast with Newey-West errors: is the forecast calibrated?
 
-    A perfect forecast has intercept 0 and slope 1. The slope says whether the
-    forecast is scaled right; `t(b=1)` says whether the miss is significant
-    once overlapping horizons are accounted for.
+        target[t+h] = alpha + beta * forecast[t] + error
+
+    A calibrated forecast has alpha = 0 and beta = 1. The two coefficients
+    diagnose different faults, and the useful test is the joint one:
+
+    * `beta != 1` — mis-scaled. Below 1 the forecast over-reacts (it moves more
+      than the outcome does); above 1 it under-reacts.
+    * `alpha != 0` with `beta` near 1 — a pure level bias. The forecast tracks
+      moves correctly and sits a constant distance away, which is a *fixable*
+      forecast: subtract the constant.
+
+    Note what is *not* tested here: `beta = 0`. That null says only "this
+    forecast carries some information", which any volatility-shaped series
+    passes against a persistent target, so its t-statistic is close to
+    uninformative. `t_beta_eq_1` and the joint Wald test are the ones to read.
     """
     design = sm.add_constant(forecast)
     fit = sm.OLS(target, design).fit(cov_type="HAC", cov_kwds={"maxlags": lags})
-    slope = fit.params[1]
+    intercept, slope = fit.params[0], fit.params[1]
+    # Joint H0: alpha = 0 and beta = 1 — calibration as a single question.
+    joint = fit.wald_test(
+        (np.eye(2), np.array([0.0, 1.0])), use_f=True, scalar=True
+    )
     return {
-        "alpha": fit.params[0],
+        "alpha": intercept,
         "beta": slope,
+        "t_alpha_eq_0": intercept / fit.bse[0],
         "t_beta_eq_1": (slope - 1) / fit.bse[1],
+        "mz_joint_f": float(joint.statistic),
+        "mz_joint_p": float(joint.pvalue),
         "r2": fit.rsquared,
     }
 
 
+def squared_error_loss(actual: np.ndarray, forecast: np.ndarray) -> np.ndarray:
+    """Per-period squared error, in squared vol points.
+
+    Symmetric in levels: a 5-point miss at VIX 15 costs the same as at VIX 60.
+    That makes it dominated by the few highest-vol days in the sample.
+    """
+    return (forecast - actual) ** 2
+
+
+def qlike_loss(actual: np.ndarray, forecast: np.ndarray) -> np.ndarray:
+    """Per-period QLIKE loss on variances: `s/f - log(s/f) - 1`.
+
+    Scale-free — it sees the *ratio* of realized to forecast variance — and
+    asymmetric: under-forecasting is punished far harder than over-forecasting,
+    which is usually the right shape for volatility.
+
+    Both this and squared error are robust in Patton's sense: because the
+    target is a noisy proxy for the latent variance, most loss functions rank
+    forecasts differently on the proxy than they would on the truth. These two
+    do not. MAE and correlation are not robust and must not be used to rank.
+    """
+    ratio = (actual / forecast) ** 2
+    return ratio - np.log(ratio) - 1
+
+
+LOSSES = {"mse": squared_error_loss, "qlike": qlike_loss}
+
+
 def score(frame: pd.DataFrame, target: str, horizon: int) -> pd.DataFrame:
-    """RMSE, MAE, bias, correlation and the MZ regression, per model."""
+    """Both robust losses, the descriptive metrics and the MZ regression, per model."""
+    frame = attach_benchmark(frame, target)
     actual = frame[target].to_numpy()
     rows = []
-    for model in MODELS:
+    for model in MODELS + [BENCHMARK]:
         forecast = frame[model].to_numpy()
         error = forecast - actual
         rows.append(
@@ -138,6 +202,7 @@ def score(frame: pd.DataFrame, target: str, horizon: int) -> pd.DataFrame:
                 "target": target,
                 "model": model,
                 "rmse": float(np.sqrt(np.mean(error**2))),
+                "qlike": float(np.mean(qlike_loss(actual, forecast))),
                 "mae": float(np.mean(np.abs(error))),
                 "bias": float(np.mean(error)),
                 "corr": float(np.corrcoef(forecast, actual)[0, 1]),
@@ -145,36 +210,70 @@ def score(frame: pd.DataFrame, target: str, horizon: int) -> pd.DataFrame:
             }
         )
     scored_df = pd.DataFrame(rows)
-    best_rmse = scored_df["rmse"].min()
-    scored_df["rmse_vs_best"] = scored_df["rmse"] / best_rmse
+    scored_df["rmse_vs_best"] = scored_df["rmse"] / scored_df["rmse"].min()
+    scored_df["qlike_vs_best"] = scored_df["qlike"] / scored_df["qlike"].min()
     return scored_df
 
 
-def diebold_mariano(frame: pd.DataFrame, target: str, horizon: int) -> pd.DataFrame:
-    """Is IV's edge bigger than the noise? One test per rival.
+def diebold_mariano_pair(
+    actual: np.ndarray,
+    forecast_a: np.ndarray,
+    forecast_b: np.ndarray,
+    loss: str,
+    horizon: int,
+) -> dict:
+    """Test whether forecast A is more accurate than forecast B.
 
-    Regresses the squared-error difference (IV minus rival) on a constant with
-    Newey-West errors. A negative t-statistic below -2 means IV is
-    significantly more accurate at that horizon and target.
+    Form the per-period loss differential `d[t] = L(A) - L(B)` and test
+    `E[d] = 0` — which is exactly a HAC t-test on the mean of `d`, i.e. an OLS
+    regression of `d` on a constant with Newey-West errors at `h` lags.
+
+    A negative mean means A loses less, so a t-statistic below -1.96 says A
+    beats B. The point of testing the *differential* rather than eyeballing two
+    RMSEs is that the two forecasts see the same shocks: the common component
+    cancels, and what is left is the part of the accuracy gap that is not just
+    both models reacting to the same April.
+
+    Both forecasts here are non-nested, which is what plain DM assumes. A model
+    nested in its rival (adding a regressor to it) would need Clark-West
+    instead — DM is undersized in that case.
     """
+    difference = LOSSES[loss](actual, forecast_a) - LOSSES[loss](actual, forecast_b)
+    fit = sm.OLS(difference, np.ones(len(difference))).fit(
+        cov_type="HAC", cov_kwds={"maxlags": horizon}
+    )
+    mean_difference, t_stat = float(fit.params[0]), float(fit.tvalues[0])
+    return {
+        "loss": loss,
+        "mean_loss_diff": mean_difference,
+        "t_stat": t_stat,
+        "a_better": bool(t_stat < -1.96),
+        "b_better": bool(t_stat > 1.96),
+    }
+
+
+def diebold_mariano(frame: pd.DataFrame, target: str, horizon: int) -> pd.DataFrame:
+    """Every pair of forecasts against every other, under both robust losses."""
+    frame = attach_benchmark(frame, target)
     actual = frame[target].to_numpy()
-    iv_error = (frame["IV"].to_numpy() - actual) ** 2
     rows = []
-    for model in [name for name in MODELS if name != "IV"]:
-        difference = iv_error - (frame[model].to_numpy() - actual) ** 2
-        fit = sm.OLS(difference, np.ones(len(difference))).fit(
-            cov_type="HAC", cov_kwds={"maxlags": horizon}
-        )
-        rows.append(
-            {
-                "horizon": horizon,
-                "target": target,
-                "iv_vs": model,
-                "mean_sq_error_diff": float(fit.params[0]),
-                "t_stat": float(fit.tvalues[0]),
-                "iv_better": bool(fit.params[0] < 0 and fit.tvalues[0] < -1.96),
-            }
-        )
+    for name_a, name_b in combinations(MODELS + [BENCHMARK], 2):
+        for loss in LOSSES:
+            rows.append(
+                {
+                    "horizon": horizon,
+                    "target": target,
+                    "model_a": name_a,
+                    "model_b": name_b,
+                    **diebold_mariano_pair(
+                        actual,
+                        frame[name_a].to_numpy(),
+                        frame[name_b].to_numpy(),
+                        loss,
+                        horizon,
+                    ),
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -305,11 +404,15 @@ def plot_scatter(frames: dict[int, pd.DataFrame], target: str, filename: str, la
 def plot_scoreboard(scores_df: pd.DataFrame) -> None:
     """The headline comparison: accuracy and explanatory power, both targets."""
     labels = {"target_rv": "forward realized vol", "target_iv": "forward implied vol"}
-    figure, axes = plt.subplots(2, 2, figsize=(11.5, 6.8))
+    figure, axes = plt.subplots(2, 3, figsize=(15, 6.8))
     for row, (target, label) in enumerate(labels.items()):
         subset_df = scores_df[scores_df["target"] == target]
         for column, (metric, title) in enumerate(
-            [("rmse", "RMSE (vol points)"), ("r2", "Mincer-Zarnowitz R²")]
+            [
+                ("rmse", "RMSE (vol points)"),
+                ("qlike", "QLIKE loss"),
+                ("r2", "Mincer-Zarnowitz R²"),
+            ]
         ):
             axis = axes[row, column]
             plot_df = subset_df.copy()
@@ -323,9 +426,51 @@ def plot_scoreboard(scores_df: pd.DataFrame) -> None:
             axis.set_xlabel("")
             axis.set_ylabel("")
             axis.legend(title="horizon (d)", fontsize=8, title_fontsize=8, frameon=False)
-    figure.suptitle("Scoreboard: lower RMSE is better, higher R² is better", x=0.07, ha="left", weight="bold")
+    figure.suptitle(
+        "Scoreboard: lower RMSE and QLIKE are better, higher R² is better "
+        "(MEAN = expanding-mean level guess)",
+        x=0.06, ha="left", weight="bold",
+    )
     figure.tight_layout()
     figure.savefig(FIGURES / "05_scoreboard.png")
+    plt.close(figure)
+
+
+def plot_dm_heatmap(dm_df: pd.DataFrame, target: str, filename: str, label: str) -> None:
+    """Pairwise Diebold-Mariano t-statistics, one panel per loss and horizon.
+
+    Cell `(row=A, col=B)` is the t-statistic on `L(A) - L(B)`: blue (negative)
+    means the row model is more accurate, and |t| > 1.96 is the 5% bar.
+    """
+    names = MODELS + [BENCHMARK]
+    subset_df = dm_df[dm_df["target"] == target]
+    horizons = sorted(subset_df["horizon"].unique())
+
+    figure, axes = plt.subplots(len(LOSSES), len(horizons), figsize=(11.5, 8.6))
+    for row, loss in enumerate(LOSSES):
+        for column, horizon in enumerate(horizons):
+            cell_df = subset_df[
+                (subset_df["loss"] == loss) & (subset_df["horizon"] == horizon)
+            ]
+            matrix = pd.DataFrame(np.nan, index=names, columns=names)
+            for entry in cell_df.itertuples():
+                matrix.loc[entry.model_a, entry.model_b] = entry.t_stat
+                matrix.loc[entry.model_b, entry.model_a] = -entry.t_stat
+
+            axis = axes[row, column]
+            sns.heatmap(
+                matrix, annot=True, fmt=".2f", center=0, vmin=-4, vmax=4,
+                cmap="RdBu_r", linewidths=0.5, cbar=False,
+                annot_kws={"fontsize": 9}, ax=axis,
+            )
+            axis.set_title(f"{loss.upper()}, h = {horizon}d", fontsize=10, loc="left")
+            axis.set_ylabel("row model" if column == 0 else "")
+    figure.suptitle(
+        f"Diebold-Mariano t-statistics, {label} — blue: row beats column, |t|>1.96 to matter",
+        x=0.07, ha="left", weight="bold",
+    )
+    figure.tight_layout()
+    figure.savefig(FIGURES / filename)
     plt.close(figure)
 
 
@@ -439,6 +584,8 @@ def main() -> None:
     plot_scatter(frames, "target_iv", "03b_scatter_forward_implied.png", "forward implied vol")
     plot_risk_premium(frames)
     plot_scoreboard(scores_df)
+    plot_dm_heatmap(dm_df, "target_rv", "07a_dm_forward_realized.png", "forward realized vol")
+    plot_dm_heatmap(dm_df, "target_iv", "07b_dm_forward_implied.png", "forward implied vol")
     validation_df = plot_iv_validation(panel_df)
 
     scores_df.to_csv(RESULTS / "scores.csv", index=False)
@@ -450,7 +597,7 @@ def main() -> None:
     pd.set_option("display.width", 160, "display.float_format", "{:.3f}".format)
     print("\n=== scores ===")
     print(scores_df.to_string(index=False))
-    print("\n=== Diebold-Mariano: IV vs each rival ===")
+    print("\n=== Diebold-Mariano: every pair, both losses ===")
     print(dm_df.to_string(index=False))
     print("\n=== variance risk premium ===")
     print(premium_df.to_string(index=False))

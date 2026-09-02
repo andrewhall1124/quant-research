@@ -76,6 +76,16 @@ so an interrupted pull can just be re-run.
 - Overlapping horizons are everywhere in this kind of work. Always use
   Newey-West errors with `h` lags; without them t-statistics run about
   `sqrt(h)` times too large.
+- **Never judge a forecast by the t-statistic on β=0** in `outcome ~ a + b·f`.
+  It tests "carries some information", which anything vol-shaped passes, and it
+  ranks badly — in `research/volatility/` it puts ARCH (t=3.45, R²=0.03) above
+  trailing RV (t=1.88, R²=0.10). Use the layered scoring that study sets up:
+  MZ **joint** α=0/β=1 Wald for calibration, RMSE **and** QLIKE for accuracy
+  (the two losses robust to a noisy vol proxy — MAE and correlation are not,
+  and must not rank), Diebold-Mariano on the loss differential for pairwise
+  significance, encompassing for information. Always include a constant
+  benchmark; "beats a level guess" is a real hurdle and several models here
+  fail it.
 - Report what the sample cannot establish, not just what it shows. The
   2024-2025 window has one dominant shock (April 2025), so point estimates are
   clean and pairwise significance usually is not.
@@ -92,9 +102,14 @@ rows at $0.0001 before its actual 2025-10-30 listing - the BNY problem again).
 
 `research/volatility/` — implied vol beats trailing RV, ARCH(5) and GARCH(1,1)
 at forecasting both forward realized and forward implied vol, at 5 and 21 days,
-and encompasses all three. It is well-scaled (MZ slope ≈ 1) but biased high by
-~3.3 vol points, the variance risk premium. Nothing forecasts forward implied
-vol at a month; ARCH/GARCH have ~zero explanatory power there. A 30-day ATM IV
+on both RMSE and QLIKE, and encompasses all three. It is well-scaled (MZ slope
+≈ 1) but biased high by ~3.3 vol points, the variance risk premium, and that
+bias makes the joint calibration test reject at h=5 even though the slope test
+passes. Significance is thin: 61 of 80 DM tests fail to reject, and the only
+accuracy win on forward realized vol is IV over trailing RV at h=5 under QLIKE
+(t=-2.01), which squared error misses. Nothing forecasts forward implied vol at
+a month; ARCH/GARCH have ~zero explanatory power there and the expanding-mean
+constant has the lowest RMSE of anything. A 30-day ATM IV
 rebuilt from the SPXW chain correlates 0.991 with VIX and sits 3.7 points below
 it (put skew), so VIX is a safe stand-in for information questions.
 
