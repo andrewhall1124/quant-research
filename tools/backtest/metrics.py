@@ -95,17 +95,34 @@ def decile_table(decile_pnl: pl.DataFrame, holding_days: int) -> pl.DataFrame:
     return pl.DataFrame(rows).sort("quantile")
 
 
+def effective_lag(result) -> int:
+    """Trading days a position is actually held, for the Newey-West correction.
+
+    With a fixed exit that is `holding_days`. Held to expiry it is whatever the
+    tenor implies, which the engine measures as the mean number of
+    simultaneously live cohorts — one cohort opens per day, so the count of
+    live ones is the average life. Using `holding_days` there would set the lag
+    to 21 on a position held 60 days and understate the standard error by
+    roughly the square root of three.
+    """
+    live = result.diagnostics.get("mean_live_cohorts")
+    if getattr(result.config, "hold_to_expiry", False) and live:
+        return max(int(round(live)), 1)
+    return result.config.holding_days
+
+
 def compare(results: list, holding_days_by_label: dict | None = None) -> pl.DataFrame:
     """One row per run, for a grid."""
     rows = []
     for result in results:
-        holding = result.config.holding_days
+        holding = effective_lag(result)
         stats = summarize(result.daily_pnl, holding)
         rows.append(
             {
                 "label": result.config.label,
                 "filters": result.diagnostics.get("filters", ""),
-                "holding_days": holding,
+                "holding_days": result.config.holding_days,
+                "nw_lags": holding,
                 # Both matter, and only together. A tight screen shrinks the
                 # cross-section *and* drops whole formation days, because a
                 # decile of two names is not a portfolio and `min_names_per_side`

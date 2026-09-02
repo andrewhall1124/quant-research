@@ -180,49 +180,33 @@ A study may cache an expensive intermediate under its own `results/` — as
 ### Findings so far
 
 `research/vrp_cross_section/` — the first strategy study, and the first user of
-`tools/backtest/`. Ranking single names daily on how rich their 30-day ATM
-straddle is (each name's IV against its own 60-day history), buying the
-cheapest decile against the richest, vega-weighted and delta-hedged, produces a
-clean gross signal — all ten deciles split on sign, and the raw-IV control
-loses (Sharpe -0.75), so the normalisation rather than the vol level is doing
-the work. It is not tradeable: break-even is 25.4% of the quoted spread at a
-5-day hold and 14.6% at 21 days, against the 50% an ordinary half-spread-each-way
-assumption charges. The textbook `IV - E[RV]` definition is the *worst* real
-signal in the race, because with GARCH badly calibrated on these names the sort
-ranks mostly on forecast error. Two structural findings: the gross edge
-concentrates in illiquid names *at a 30-day tenor only* — at 120 days gross
-Sharpe is flat (2.19 to 2.03) across OI floors from 25 to 1,000, so the
-conflict between signal and liquidity screen is a short-tenor artifact; and a
-decile sort is incompatible with a real liquidity screen at 30 days, because
-the median day only offers 15 eligible names at an OI floor of 500, though
-long-dated contracts carry OI far more evenly and keep 204 of 250 formation
-days. **Option tenor mattered more than either variable the study set out to
-sweep**, and 30 days was inherited from the signal definition rather than
-chosen: gross Sharpe roughly doubles at 60-120 days. The quantity that decides
-tradeability is quoted spread per dollar of vega, `(ask - bid) * 100 / vega`
-(`cost_efficiency.py`): it falls 46% from 30-day to 120-day contracts (ATM vega
-grows as sqrt(T), spreads are tick-driven) and another 2.5x from the thinnest
-to the richest OI bucket, while underlying price does not move it at all. The
-respec takes break-even from 0.084 to 0.886 against the 0.5 needed, and the
-change that closes the gap is **holding to expiry**: a settled position crosses
-the quoted spread once rather than twice, which is arithmetic rather than a
-hypothesis (verified: raw spend $11.6M sold-to-close against $5.81M
-held-to-expiry, ratio exactly 2.0). Three cells clear the bar and post the only
-positive net Sharpes in the study — but the best rests on 66 formation dates at
-a ~60-day hold, about *one* independent observation, and is the maximum of ~145
-configurations searched on one year. Mechanically sound, statistically
-worthless; it needs the multi-year pull before anyone acts on it. Holding longer does not close
-the rest: the signal has a half-life, so gross P&L per day decays about as fast
-as turnover cost falls. **The earnings calendar explains the tenor result**:
-the fraction of contracts with an announcement before expiry runs 0.07 to 0.75
-across deciles at 30 days and is flat at 0.99 at 120, so a short-dated IV sort
-is substantially ranking the earnings calendar. But the P&L comes from the
-names *without* one — excluding them raises gross Sharpe 44% at both 30 and 60
-days — so earnings is a contaminant of the ranking, not the source of returns.
-Demeaning within earnings groups is worse than excluding (and worse than doing
-nothing at 60 days); at 120 days conditioning changes the result by 0.0009
-Sharpe, because there is nothing left to neutralize. Earnings conditioning is a
-signal-quality lever, not a cost one.
+`tools/backtest/`. Buy the S&P 500 names whose options are cheap against their
+own 60-session implied-vol history, sell the expensive ones, vega-weighted,
+delta-hedged, held to expiry. Gross Sharpe 3.15 (t=2.91), net of half the
+quoted spread 1.35 (t=1.12), break-even 0.886 — it can pay 89% of the quoted
+bid-ask per crossing. On 66 formation dates at a 60-day hold, which is about
+*one* independent observation, and it is the survivor of ~145 configurations,
+so the performance number is a hypothesis rather than a result.
+
+The mechanics are the durable part. **Holding to expiry** halves the spread
+bill because a settled position never crosses a second time — arithmetic, not
+an estimate — and it is the single largest lever in the study (break-even 0.202
+to 0.886 at a 60-day tenor). **Tenor matters more than any swept parameter**:
+gross roughly doubles from 30 to 60 days, and 60 is the only tenor that
+survives a real liquidity screen, because ATM vega grows as sqrt(T) while
+quoted spreads stay tick-driven (`cost_efficiency.py`: spread per dollar of
+vega falls 46% from 30 to 120 days and another 2.5x across open-interest
+buckets, while underlying price does not move it at all). **A short-dated
+implied-vol sort ranks the earnings calendar** — the fraction of contracts with
+an announcement before expiry runs 0.07 to 0.75 across deciles at 30 days and
+is flat at 0.99 at 120 — but the P&L comes from the names *without* one, so
+earnings is a contaminant of the ranking rather than a source of returns, and
+excluding it doubles gross Sharpe. 60 days is where cost efficiency and
+earnings-avoidance balance: longer is cheaper but almost every long contract
+spans an announcement, so the screen leaves nothing to trade. The **IV-level
+control loses** (-1.35), so the sort is not a low-vol tilt; the textbook
+`IV - E[RV]` is worse than useless (-0.19) because a miscalibrated GARCH
+forecast spans 36 vol points across deciles where implied vol spans 13.
 
 `research/data_quality/` — audit behind the corporate-actions work. The feed
 itself is near-spotless: over 114M stored

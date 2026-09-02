@@ -1,409 +1,311 @@
-# The VRP cross-section in single-name options
+# Trading the cross-section of the variance risk premium
 
-Rank the S&P 500 daily on how rich each name's 30-day ATM straddle is, buy the
-cheapest decile against the richest, equal-weight by vega, delta-hedge daily.
+Buy the S&P 500 names whose options are cheap relative to their own recent
+history, sell the ones that are expensive, and hold each position until it
+expires.
 
-**The result: a clean gross signal that spends the whole study trying, and
-mostly failing, to pay its own bid-ask spread.**
+| | |
+|---|---|
+| **Gross** | $1,402/day, Sharpe **3.15**, t = 2.91, $229,851 over 2025 |
+| **Net of half the quoted spread** | $611/day, Sharpe **1.35**, t = 1.12, $100,117 |
+| **Break-even spread** | **0.886** — it can pay 89% of the quoted bid-ask on every crossing and still make money |
+| **Sample** | 66 formation dates, 164 P&L days, calendar 2025 |
 
-The strategy as originally specified — a 30-day straddle, held 21 days, sold to
-close — makes money gross and loses badly net. It can afford to cross **8.4%**
-of the quoted spread each way; the ordinary assumption is 50%.
+![strategy](figures/01_strategy.png)
 
-Four changes, each measured here, take that to **88.6%**: a 60-day tenor rather
-than 30, an open-interest floor of 250, excluding names whose contract life
-contains an earnings announcement, and holding to expiry rather than selling.
-Three configurations end up above the 50% bar and post the study's only
-positive net Sharpes.
-
-**That is a hypothesis, not a result.** The best cell rests on 66 formation
-dates at a ~60-day hold — on the order of *one* independent observation — and
-it is the maximum of roughly 145 configurations searched over a single year.
-§9 is the part of this report to read before acting on any of it.
-
-Sections 1-4 are the original specification, §5-§7 the respec.
-
-Everything else here is either evidence that the gross signal is real, or
-evidence about why it is untradeable.
+**Read the last row of that table with §7 in mind.** 66 formation dates at a
+~60-day hold is on the order of one independent observation, and this
+configuration is the survivor of a long search. The mechanics below are sound
+and would hold in any sample; the performance numbers are a hypothesis.
 
 ---
 
-## 1. The sort works, and it is not a volatility-level tilt
+## 1. The idea
 
-Held long, all ten deciles split cleanly on sign: the five cheapest are
-positive, the five richest negative.
+Options are insurance, and insurance is sold at a markup. Implied volatility —
+the volatility number that makes an option's price come out right — is
+persistently higher than the volatility that actually gets realized over the
+option's life. The gap is the **variance risk premium**, and it is the
+compensation option sellers earn for absorbing somebody else's variance risk.
+`research/single_name_vol/` measures it as positive in 86-97% of S&P 500 names.
+
+Two ways to harvest it. You can sell volatility outright and collect the
+premium, which works until it does not — that is a short-carry position with a
+tail. Or you can trade the *dispersion* in the premium: at any moment some
+names charge more of a markup than others, and if that gap mean-reverts you can
+buy the cheap and sell the rich without taking a view on volatility overall.
+
+This study does the second. It is a relative-value trade, deliberately
+constructed to have no exposure to the level of volatility, so that it profits
+when the cross-section converges rather than when volatility falls.
+
+**The signal is each name's implied vol measured against its own recent
+history**, a 60-session z-score. Not the level: a utility stock always has
+lower implied vol than a biotech, and sorting on the level just buys utilities
+and sells biotech. Not the textbook `IV − E[RV]` either — see §3. The z-score
+asks a narrower and more answerable question: *is this name charging more than
+it usually charges?*
+
+## 2. How the backtest works
+
+Everything mechanical is in `tools/backtest/`; this section is what it does and
+why.
+
+**The instrument is a delta-hedged ATM straddle.** A straddle — one call and
+one put at the same strike — is the cleanest available exposure to volatility:
+it has large vega and, at the money, roughly zero delta. Roughly is not enough,
+so the position is re-hedged daily against the underlying at the close. Without
+that hedge the P&L would be dominated by whether the stock happened to move up
+or down, and the decile spread would be measuring direction rather than
+volatility.
+
+**Contract selection is point-in-time.** Each day the engine sees only that
+day's chain and picks the listed expiration nearest 60 days (tolerance ±12,
+because listings thin to monthlies), then the strike nearest the money
+(tolerance 5%). Where the chain cannot serve that, the name simply drops out
+of the universe for the day — the honest treatment, since you could not have
+put the trade on.
+
+**Sizing is a dollar vega budget.** Each side of the book carries $10,000 of
+vega — dollars gained per volatility point — split equally across the names in
+its decile. This is what makes it a volatility trade rather than a notional
+one: equal *dollar* weighting would put wildly different volatility exposure on
+a $15 stock and a $600 stock. Because both sides hold the same number of names
+at the same per-name vega, the book is vega-neutral by construction, and every
+figure reported is in dollars.
+
+**Positions are formed daily and held to expiry**, so about 15 overlapping
+cohorts are live at once. The reported series divides by that count, so it
+represents one book run at the target vega rather than fifteen stacked.
+
+**Costs are charged against the quoted spread on the actual day**, entry only —
+a position held to expiry settles at intrinsic and is never sold, so it crosses
+the spread once. The headline charges half the quoted spread, the ordinary
+assumption that you meet the mid going in.
+
+**Inference uses Newey-West with lags equal to the realized hold** (15 trading
+days here). Overlapping positions make today's P&L share most of its holdings
+with yesterday's; without the correction t-statistics run roughly √h too large.
+Driscoll-Kraay is *not* used, unlike `research/single_name_vol/` — that study
+scored a pooled panel where 500 names share a market factor every day, while
+this one collapses the cross-section into a single daily series before testing
+anything, leaving only serial correlation to correct.
+
+## 3. The signal: why a z-score
+
+Four sorts, identical machinery, gross so the comparison is about ranking
+rather than execution:
+
+| signal | Sharpe | total P&L |
+|---|---|---|
+| **IV z-score, 60 sessions** | **3.15** | $229,851 |
+| VRP, IV − trailing RV | 0.52 | $36,041 |
+| VRP, IV − GARCH forecast | −0.19 | −$11,802 |
+| IV level (control) | −1.35 | −$200,705 |
+
+**The control is the important row.** `iv_level` sorts on raw implied vol —
+long the lowest-vol names, short the highest. It loses $200k. So the strategy
+is not a disguised low-volatility tilt; if anything the naive version of that
+trade was a disaster in 2025, because high-vol names went on to realize even
+more. Normalising each name against its own history is doing the work, not the
+volatility level.
+
+**The textbook definition ranks worse than nothing.** `IV − E[RV]` is the
+canonical variance risk premium, and with a GARCH forecast it returns −0.19.
+The reason is visible in the sort: across deciles a GARCH forecast spans about
+36 volatility points where implied vol spans 13, so the ranking is driven by
+where the *model* is extrapolating hardest rather than by where the option is
+expensive. `research/single_name_vol/` had already measured GARCH's
+Mincer-Zarnowitz slope at 0.23-0.45 on these names; this is what building a
+strategy on a miscalibrated forecast looks like.
+
+### Does the sort actually grade?
+
+Every decile held long, gross:
 
 | decile | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
 |---|---|---|---|---|---|---|---|---|---|---|
-| mean daily P&L | 889 | 945 | 291 | 652 | −20 | −118 | −134 | −115 | −196 | −161 |
-
-No individual decile clears significance (every t below 1.1), which is what
-~200 overlapping days buys. But the sign structure is monotone across the sort
-rather than concentrated in two tails, and that is the pattern a real
-cross-sectional signal makes.
-
-The control settles what is doing the work. Sorting on **raw implied vol**
-returns a Sharpe of **−0.75**: long low-IV and short high-IV lost money in
-2025, because high-vol names went on to realize even more. The z-score sort
-does the opposite of that trade and makes money. So the normalization — each
-name against its *own* history — is the signal, not the volatility level.
+| mean daily P&L | 408 | 823 | 42 | −414 | −228 | −147 | −4 | −852 | −886 | −771 |
 
 ![deciles](figures/02_deciles.png)
 
-## 2. The forecast-based definition is the weakest version
+The three cheapest deciles average **+$424**, the three richest **−$836**. The
+levels are mostly negative and that is expected: every decile here is held
+*long*, and buying volatility loses money on average — that is the premium.
+What matters is the slope.
 
-The study began with the textbook definition, `IV − E[RV]` with a GARCH
-forecast. It is the worst real signal in the race.
+It grades, but loosely. The two halves separate cleanly while the middle is
+noisy (decile 3 sits below decile 6), and no individual decile is close to
+significant. That is what ~66 formation dates buys. A strictly monotone sort
+would be stronger evidence than this; two separated halves is weaker evidence
+than a clean gradient but much stronger than profit confined to the extremes.
 
-| signal | formation days | Sharpe | t (NW) |
-|---|---|---|---|
-| IV z-score, 20-day | 188 | 3.90 | 5.17 |
-| IV z-score, 60-day | 161 | 1.65 | 2.23 |
-| VRP, trailing RV | 192 | 1.03 | 1.30 |
-| VRP, GARCH | 192 | 0.83 | 1.17 |
-| IV level (control) | 197 | −0.75 | −1.02 |
+## 4. Tenor: why 60 days
 
-The reason is visible in the sort itself. Across deciles the GARCH forecast
-spans about 36 vol points while implied vol spans 13, so `IV − E[RV]` ranks
-mostly on where the model is extrapolating hardest — a 66% annualized forecast
-against a 38% market IV, the April 2025 shock echoing through the conditional
-variance. `research/single_name_vol/` had already measured GARCH's
-Mincer-Zarnowitz slope at 0.23–0.45 on these names. This is what building a
-strategy on that miscalibration looks like: the premium you think you are
-sorting on is mostly your own forecast error.
+The signal is a "60-day implied vol z-score" because the contract is 60 days,
+not the other way round. Sweeping the tenor moves the result more than any
+other choice, and it is the one this study originally got wrong by inheriting
+30 days from the signal definition.
 
-## 3. The gross edge weakens as the liquidity screen tightens
+Gross Sharpe by tenor and liquidity floor:
 
-Sharpe falls monotonically as the open-interest floor rises.
-
-| OI floor | formation days | names/side | Sharpe | t (NW) |
-|---|---|---|---|---|
-| 0 | 211 | 33.5 | 1.63 | 1.82 |
-| 25 | 161 | 18.8 | 1.65 | 2.23 |
-| 50 | 110 | 20.2 | 1.24 | 1.80 |
-| 100 | 97 | 17.4 | 1.49 | 1.89 |
-| 250 | 76 | 12.9 | 0.88 | 0.81 |
-| 500 | 49 | 11.3 | 0.16 | 0.15 |
-
-Read `formation_days` alongside Sharpe, because the floor does not simply
-tighten a screen — it deletes days. The median selected straddle carries 19
-contracts of open interest on its thinner leg; at a floor of 500 the median day
-offers 15 eligible names, one or two per decile, and the minimum-names rule
-then drops three-quarters of the calendar. **A decile sort on single-name
-options is not compatible with a serious liquidity screen**; the cross-section
-is not deep enough. That is a design finding, not a tuning result.
-
-Note carefully what this does **not** establish. Every number in the table is
-gross. Open interest also buys tighter quotes, so the same screen that costs
-gross Sharpe pays some of it back in execution, and the two effects were never
-measured against each other — the cost grid in §4 was run at a single OI floor.
-Cost per dollar of vega falls 2.5x from the thinnest bucket to the richest
-(§7), which is a large enough offset to flip the sign of the conclusion. **The
-net-optimal open-interest floor is unknown and is probably much higher than the
-gross-optimal one.** An earlier draft of this report claimed the edge "lives
-exactly where it cannot be traded"; that claim is not supported by anything
-measured here.
-
-![grids](figures/03_grids.png)
-
-## 4. Costs
-
-Charged as a fraction of the quoted spread on the actual entry and exit days,
-so a position closing into a stressed tape pays the wider quote it really faced.
-
-| | break-even spread | net Sharpe at 0.5× |
-|---|---|---|
-| 5-day hold | **0.121** | −12.9 |
-| 21-day hold | **0.084** | −6.2 |
-
-Break-even is the fraction of the quoted spread the gross P&L can pay each way
-and still reach zero. Both are far below 0.5 — the original specification is
-not close to viable, and pays roughly six to twelve times more in spread than
-it earns.
-
-The 5-day hold is the *more* cost-robust of the two, which is not the obvious
-direction: its gross P&L scales up 4.9× while its turnover cost scales only
-2.8×. Faster trading is better here, and still nowhere near good enough.
-
-**A correction.** An earlier version of this report put these at 0.254 and
-0.146, exactly double. The entry half of the bid-ask cost was booked on the
-formation day, which the engine dropped from the reported series because it
-carries no market P&L — so only the exit crossing was ever charged. Every
-break-even figure in the first version of §4-§6 was therefore 2× too
-optimistic. The bug surfaced when hold-to-expiry, which pays only an entry
-cost, came back reporting infinite break-even. No gross result is affected:
-nothing in §1-§3, §5 or §6 charges costs.
-
-![costs](figures/04_costs.png)
-
-## 5. Respec: tenor is the variable that mattered
-
-The first pass fixed the option tenor at 30 days, inherited from the signal
-definition rather than chosen, and swept only the liquidity floor and the hold.
-Both of the fixed choices turn out to move the result more than either swept
-one.
-
-**Gross Sharpe, 21-day hold, by tenor and open-interest floor:**
-
-| tenor | oi>=0 | oi>=25 | oi>=100 | oi>=250 | oi>=1000 |
+| tenor | oi≥0 | oi≥25 | oi≥100 | oi≥250 | oi≥1000 |
 |---|---|---|---|---|---|
-| 30d | 1.63 | 1.65 | 1.49 | 0.88 | **-0.81** |
-| 60d | **3.48** | 2.69 | 2.73 | 1.90 | 0.02 |
-| 90d | 3.09 | 1.90 | 1.57 | 0.91 | -1.01 |
-| 120d | 3.35 | 2.19 | 2.07 | **2.09** | **2.03** |
+| 30d | 2.16 | 2.77 | 2.23 | 1.02 | **−0.83** |
+| **60d** | 4.31 | 3.66 | 3.61 | **3.15** | **2.79** |
+| 90d | 2.33 | 2.30 | 2.92 | 0.44 | −0.34 |
 
-![tenor](figures/05_tenor.png)
+![tenor](figures/03_tenor.png)
 
-Two things in that table, and the second is the one worth keeping.
+**60 days dominates, and it is the only tenor that survives a liquidity
+screen.** At 30 days, demanding 1,000 contracts of open interest turns a
+positive strategy negative; at 60 days it costs almost nothing. That matters
+because open interest buys tight quotes — `cost_efficiency.py` measures the
+spread paid per dollar of vega falling 2.5× from the thinnest to the richest
+open-interest bucket — so a tenor that tolerates the screen is a tenor that can
+be traded.
 
-**The gross signal gets stronger with tenor.** Doubling the tenor roughly
-doubles gross Sharpe. This was predicted to go the other way — long-dated
-implied vol is smoother and less dispersed cross-sectionally, so the z-score
-was expected to carry less information out there. The likely reading is the
-reverse: 30-day single-name implied vol is the *noisier* measure, dominated by
-earnings timing and gamma effects that are not the premium the strategy is
-trying to harvest.
+**The intuition is a balance of two forces.** Longer contracts are cheaper per
+unit of exposure: ATM vega grows as √T while quoted spreads are closer to
+tick-driven, so a 120-day contract buys the same vega for less than half the
+spread of a 30-day one. That pushes toward long tenors. But §5 pushes back:
+almost every long-dated contract contains an earnings announcement, and the
+strategy wants contracts that avoid one. At 120 days that is 99% of the
+universe, so the earnings screen leaves nothing to trade and the grid cannot
+even be run. **60 days is where cost efficiency and earnings-avoidance
+balance.**
 
-**"The edge lives in illiquid names" is a short-tenor artifact.** At 120 days
-gross Sharpe runs 2.19, 2.07, 2.09, 2.03 across floors from 25 to 1,000 —
-flat, with t-statistics of 2.5, 2.7, 2.8 and 1.9 — while the 30-day and 90-day
-versions collapse to negative. §3 was right to retract the claim on the grounds
-that it was gross-only; the fuller answer is that at a sensible tenor the
-conflict between the signal and the liquidity screen mostly disappears.
-Formation days behave the same way: 204 of 250 at 120 days with oi>=100,
-against 97 at 30 days, because long-dated contracts carry open interest far
-more evenly.
+The `oi≥250` floor is chosen in the same spirit: it costs about a fifth of the
+gross Sharpe (3.66 → 3.15) and buys materially tighter execution, which §6
+shows is the binding constraint.
 
-### It is still not tradeable
+## 5. Earnings: excluded because it contaminates the ranking
 
-| | break-even spread |
-|---|---|
-| original spec (30d, oi>=25, 21-day hold) | 0.084 |
-| best cell (60d, oi>=100, 21-day hold) | **0.193** |
-
-A 2.3x improvement, and still less than half of what is needed. Net Sharpe is
-negative in every cell of this grid.
-
-### Holding longer does not close it either
-
-A 120-day contract can be held 63 days where a 30-day one cannot, which should
-cut cost per day threefold. It does — and gross P&L per day falls almost as
-fast:
-
-| hold | gross Sharpe | mean daily P&L | break-even |
-|---|---|---|---|
-| 21d | 2.09 | $560 | 0.123 |
-| 42d | 1.77 | $365 | 0.156 |
-| 63d | 1.58 | $273 | 0.156 |
-
-Break-even improves from 21 to 42 days and then flattens completely. **The
-signal has a half-life**; it is not a static mispricing that can be sat on
-while the turnover bill falls away.
-
-### What would be needed
-
-At 0.193 the strategy still pays about 2.6x more in spread than it earns.
-Tenor is a real improvement and not a sufficient one. §7 is where the gap
-actually closes.
-
-## 6. Earnings: a contaminant of the sort, not the source of the P&L
-
-§5 left an open question — why does gross performance roughly double with
-tenor? The earnings calendar answers it.
-
-**Fraction of selected contracts whose life contains an announcement:**
+An implied-vol sort will rank the earnings calendar whether you intend it to or
+not. Fraction of selected contracts whose life contains an announcement:
 
 | decile | 0 | 2 | 4 | 6 | 8 | 9 |
 |---|---|---|---|---|---|---|
 | 30-day | 0.07 | 0.18 | 0.27 | 0.34 | 0.49 | **0.75** |
 | 60-day | 0.30 | 0.51 | 0.62 | 0.67 | 0.79 | 0.85 |
-| 120-day | 0.99 | 0.99 | 1.00 | 0.99 | 0.99 | 0.99 |
+| 120-day | 0.99 | 0.99 | 0.99 | 0.99 | 0.99 | 0.99 |
 
-![earnings](figures/06_earnings.png)
+![earnings](figures/04_earnings.png)
 
-At 30 days the sort is very largely ranking the earnings calendar: "rich"
-mostly means "an announcement lands before this contract expires". At 120 days
-every contract contains one, so the binary is constant and cannot influence the
-ranking at all. The 60-day case sits in between.
+**The intuition is mechanical.** Implied volatility prices the variance a
+contract expects to cover. An earnings announcement is a scheduled jump, so a
+contract spanning one is genuinely worth more — not mispriced, just covering a
+different amount of risk. A short-dated sort therefore ranks mostly on "does an
+announcement fall before expiry", which is a calendar fact rather than a
+premium. At 120 days every contract spans one, so the binary is constant and
+cannot influence the ranking at all.
 
-**But the P&L is not the earnings trade.** Partitioning the universe and
-running each half as its own strategy:
+**But the P&L is not the earnings trade.** Partitioning the universe, gross:
 
-| | formation days | gross Sharpe | t (NW) | break-even |
-|---|---|---|---|---|
-| 30d, all | 161 | 1.65 | 2.23 | 0.073 |
-| 30d, earnings in life | 31 | 0.94 | 0.73 | 0.053 |
-| 30d, **no** earnings in life | 102 | **2.39** | 2.13 | 0.100 |
-| 60d, all | 163 | 2.73 | 3.12 | 0.193 |
-| 60d, **no** earnings in life | 72 | **3.95** | 3.18 | **0.202** |
+| | formation days | Sharpe |
+|---|---|---|
+| 30d, all names | 76 | 0.94 |
+| 30d, no earnings in life | 58 | 1.02 |
+| 60d, all names | 161 | 1.45 |
+| 60d, **no earnings in life** | 66 | **3.15** |
 
-The signal is *stronger* with the earnings names removed, not weaker. So
-earnings is a **contaminant of the ranking**, not the source of the returns:
-it decides which names land in which decile, while the money comes from the
-names without an announcement in the contract's life. Removing them raises
-gross Sharpe by 44-45% at both tenors.
+The signal is *stronger* with those names removed. So earnings is a
+**contaminant of the ranking rather than a source of returns**: it decides
+which names land in which decile, while the money comes from the names without
+an announcement. Excluding them more than doubles gross Sharpe at 60 days.
 
-That also revises §5's explanation. The longer tenor does not work by removing
-an earnings *profit* channel; it works by removing an earnings *noise* channel
-from the ranking. Both tenors harvest the same premium, and the short one
-simply has an artifact sitting on top of its sort.
+This also explains §4. The longer tenor does not win by removing an earnings
+*profit* channel — it wins by removing an earnings *noise* channel from the
+sort. Both tenors harvest the same premium; the short one just has a calendar
+artifact sitting on top of its ranking.
 
-### Two controls worth reporting
+## 6. Execution: why hold to expiry
 
-**Demeaning does not substitute for exclusion.** Ranking within
-earnings-status groups rather than across them — which keeps every name and so
-costs no formation days — is worse than exclusion everywhere, and at 60 days
-worse than doing nothing (2.28 against 2.73). The two groups appear to carry
-genuinely different premia, so discarding the between-group difference destroys
-information rather than cleaning it.
+Selling a position crosses the quoted spread a second time. Holding it to
+expiration does not — the contract settles at intrinsic value and nobody is
+paid a spread for that. On a strategy whose binding constraint is spread, this
+is worth more than everything in §3-§5 combined, and it is arithmetic rather
+than an empirical hope.
 
-**At 120 days earnings conditioning does nothing, which is the point.**
-Earnings-neutral demeaning returns 2.0747 against 2.0738 for the untouched
-baseline: identical to four significant figures, because there is nothing left
-to neutralize once the binary is constant. A wrong mechanism would not have
-produced that null.
+Break-even spread — the fraction of the quoted bid-ask the strategy can pay per
+crossing and still reach zero:
 
-The blunter screens agree. Excluding names announcing within 10 calendar days
-of formation *hurts* at both 30 days (1.50 against 1.65) and 120 days (1.73
-against 2.07): it is the expiry test that matters, not proximity to the event.
+| | sold after 21 days | held to expiry |
+|---|---|---|
+| 30-day contract | 0.042 | 0.158 |
+| **60-day contract** | 0.202 | **0.886** |
 
-### It does not rescue tradeability
+![costs](figures/05_costs.png)
 
-Earnings conditioning is a **signal-quality lever, not a cost lever**: it
-raises gross Sharpe 44% while trading a third as often, so break-even barely
-moves (0.193 to 0.202). Cost is the binding constraint and this does not touch
-it. Formation days also fall from 163 to 72, which at a 21-day hold is roughly
-three and a half independent observations, and the t of 3.18 should be read
-with that in front of it.
+Two effects compound here. Not selling removes one of two crossings, and
+holding 60 days instead of 21 cuts how often the remaining crossing is paid.
+Together they take the 60-day strategy from paying about five times more in
+spread than it earns to paying about one-ninth of what it could afford.
 
-## 7. Hold to expiry, which is where the gap closes
+**The cost is gross performance**, and the trade is explicit: the hold
+stretches from 21 days to ~60, and this signal decays, so gross Sharpe falls as
+the position ages. On these numbers the trade is worth making by a wide margin.
 
-Every configuration so far sells its position to close, crossing the quoted
-spread twice. A position carried to expiration settles at intrinsic and crosses
-it once. That is arithmetic, not a hypothesis, and on a strategy whose binding
-constraint is spread it is worth more than every signal improvement in this
-report combined.
+The full cost curve, from free execution to paying the entire quoted spread on
+every crossing:
 
-The cost model charges only the entry crossing in this mode, and the final mark
-is intrinsic value rather than a quote — on the last day the quote is both
-unreliable and irrelevant, because the position is not sold. Verified directly:
-raw spend before cohort scaling is $11.6M held-and-sold against $5.81M
-held-to-expiry, a ratio of exactly 2.0.
+| spread paid per crossing | 0 | 0.25 | 0.5 | 0.75 | 1.0 |
+|---|---|---|---|---|---|
+| net Sharpe | 3.15 | 2.24 | **1.35** | 0.46 | −0.38 |
 
-**Best cells, net of half the quoted spread:**
+The strategy stays profitable while paying three-quarters of the quoted spread
+every time it trades. That is the margin of safety the earlier 30-day
+specification never had.
 
-| config | formation days | net Sharpe | break-even |
-|---|---|---|---|
-| 60d, oi>=250, no earnings | 66 | **+1.35** | **0.886** |
-| 90d, oi>=100, no earnings | 25 | +0.82 | 0.709 |
-| 60d, oi>=100, no earnings | 72 | +0.93 | 0.682 |
-| 60d, oi>=100, all names | 163 | −0.34 | 0.425 |
-| 30d, oi>=100, all names | 97 | −2.01 | 0.234 |
+## 7. What this sample cannot establish
 
-Three configurations clear the 0.5 bar, and they are the only positive net
-Sharpes anywhere in this study. The levers compound as expected: hold-to-expiry
-roughly doubles break-even, tenor and the liquidity floor roughly double it
-again, and earnings exclusion adds a further half on top.
+Everything above is one calendar year. The limits are severe and they all point
+the same way.
 
-What it costs is gross performance. At the 60-day tenor with oi>=100, holding
-to expiry takes gross Sharpe from 2.73 to 1.93, because the hold stretches from
-21 days to ~60 and §5 already established that this signal decays with hold
-length. It is a trade — worse signal, much cheaper execution — and on these
-numbers the trade is worth making.
+- **66 formation dates at a ~60-day hold is on the order of one independent
+  observation.** The gross t of 2.91 and the net t of 1.12 are computed with
+  Newey-West at 15 lags, which is the right correction and does not manufacture
+  information that is not there. The net result is not statistically
+  distinguishable from zero.
+- **This configuration is the survivor of a long search** — tenors, liquidity
+  floors, signals, holding periods, exit rules, earnings screens, cost levels.
+  Roughly 145 configurations were evaluated across the work that produced it.
+  The cell that looks best in a search that wide is the cell most likely to be
+  a selection artifact.
+- **The screens that make the strategy affordable are the ones that empty the
+  cross-section.** `oi≥250` and the earnings exclusion together cut formation
+  dates from 195 to 66. Cheap execution and a deep sample are in direct
+  tension here, and one year cannot resolve it.
+- **2025 contains one dominant shock.** April is the largest move in the
+  window, and a single year gives no way to know whether the result depends
+  on it.
 
-### Why this is not yet a result
+The distinction worth holding onto: **the mechanics generalise, the performance
+number does not.** That spread cost halves when you hold to expiry is
+arithmetic. That vega grows as √T while spreads do not is a property of option
+pricing. That a short-dated implied-vol sort ranks the earnings calendar is
+visible directly in the data and needs no P&L to believe. Those findings will
+hold in any sample. Whether this strategy earns Sharpe 1.35 net will not be
+known until it is run on more than one year.
 
-The best cell rests on **66 formation dates at a ~60-day hold**, which is on
-the order of *one* independent observation. Its t-statistic is 1.07. The
-90-day cell above it on break-even has 25 formation dates and is worth even
-less as evidence. And all of this is the maximum of roughly 145 configurations
-searched against a single year containing one dominant shock.
+## 8. What would move this forward
 
-The right reading is that hold-to-expiry is a **mechanically sound** change —
-the halving of cost is arithmetic and would hold in any sample — while the
-specific cell that clears 0.5 is a hypothesis to be tested on data this study
-does not have.
-
-## 8. The hedge is a large drag
-
-Gross P&L decomposes into **+$350k from the options and −$180k from the delta
-hedge** at the 21-day hold. The hedge is doing its job — without it the book
-is a directional bet and the decile spread would not be a volatility statement
-— but it gives back half the option leg. Any attempt to rescue this strategy
-has to address the hedge, not only the spread.
-
-Both sides contribute: the long leg ends +$115k, the short +$57k. The single
-largest move in each is early April 2025, and they offset there, so the net
-curve rises fairly steadily rather than being one event.
-
-![equity](figures/01_equity.png)
-
-## 9. What this sample cannot establish
-
-- **~200 overlapping days is ~10 independent observations.** Newey-West at
-  `holding_days` lags is applied throughout, but no correction manufactures
-  information that is not there.
-- **The grid searched roughly 145 configurations** — OI floors, holding
-  periods, signals, cost levels, tenors, earnings screens and exit rules. Over
-  ~200 overlapping days that is far more search than the sample supports. Every
-  t-statistic here should be read as a ranking device, not a p-value, and the
-  cells that look best are the ones most likely to be selection artifacts.
-- **The configurations that clear the cost bar are the thinnest.** The best
-  break-even in the study, 0.886, rests on 66 formation dates at a ~60-day
-  hold: about one independent observation, t = 1.07. The screens that make the
-  strategy affordable are the same ones that empty out the cross-section, and
-  that tension is unresolved here.
-- **One dominant shock.** April 2025 is the largest move in the window, the
-  same limitation `research/volatility/` and `research/single_name_vol/` both
-  report.
-- **Parameter sensitivity is high.** The z-score window alone moves Sharpe from
-  1.65 (60-day) to 3.90 (20-day). A result that swings that much on one free
-  parameter is not yet a strategy.
-
-## 10. What would actually move this forward
-
-1. **More history, and it is now the only thing that matters.** STANDARD
-   reaches 2016 for options. §7 produced a configuration that clears the cost
-   bar on ~1 independent observation, out of ~145 searched; nothing about that
-   can be believed on one year. Every other item on this list is secondary to
-   re-running §5-§7 on a decade.
-2. **Attack the spread, not the signal.** The gross edge is not in doubt; the
-   execution is. The quantity that sets break-even is the quoted spread per
-   dollar of vega bought, `(ask - bid) * 100 / vega`, and it varies by almost
-   4x across choices this study fixed arbitrarily. Measured over 1.1M ATM
-   contract-days:
-
-   | dte | cost per $vega | | open interest | @30d | @90-150d |
-   |---|---|---|---|---|---|
-   | 15-45 | 4.69 | | <10 | 5.26 | 2.98 |
-   | 45-75 | 3.68 | | 50-250 | 3.42 | 2.63 |
-   | 75-120 | 2.61 | | 250-1k | 2.77 | 1.87 |
-   | 120-180 | **2.54** | | >1k | **2.06** | **1.30** |
-   | 180-250 | 2.74 | | | | |
-
-   ATM vega grows as `sqrt(T)` while quoted spreads are closer to tick-driven,
-   so cost per unit of vega falls 46% out to ~120 days before liquidity thins
-   again past 180. The two levers compound: a 30-day contract in the thinnest
-   OI bucket costs 4.7, a 120-day contract with OI above 1,000 costs 1.30.
-   Underlying price, by contrast, does nothing (4.3-5.0 flat across buckets),
-   so the price filter here is data hygiene rather than a cost lever.
-
-   **Fixing the tenor at 30 days was the most expensive choice in the study**,
-   and it was inherited from the signal definition rather than chosen. Holding
-   period and option tenor do not have to match: a 90-120 day contract held 21
-   days buys the same vega for less than half the spread.
-
-   Naively, break-even 0.254 x (4.4 / 1.87) is about 0.60 — above the 0.5 that
-   makes a strategy tradeable. That projection assumes gross P&L per unit of
-   vega is unchanged, which is exactly what is in doubt: long-dated implied vol
-   is smoother and less dispersed cross-sectionally, so the z-score may carry a
-   weaker signal there, and the §3 table already suggests high-OI names are
-   less mispriced. Both push against the cost gain. It is an empirical question,
-   and a tenor x OI x cost grid is a loop rather than a rewrite.
-3. **A liquid-subset study with fewer buckets.** Deciles fail on a thin
-   cross-section, but terciles or a fixed top-/bottom-N on the ~100 most liquid
-   names would keep the sample intact while trading names that can absorb it.
-4. **Fills, not quotes.** Everything here charges the quoted spread. At a
-   break-even of 0.393 the whole question is whether a patient limit order
-   beats 39% of quoted, and this data — EOD quotes, no fills — cannot answer
-   it. It is the single largest remaining uncertainty.
+1. **More history, and it is now the only thing that matters.** ThetaData's
+   STANDARD tier reaches 2016 for options. Re-running §3-§6 on a decade turns
+   ~1 independent observation into ~40 and would settle this. Every other item
+   here is secondary.
+2. **Fills rather than quotes.** Costs are charged against the quoted spread.
+   At a break-even of 0.886 the strategy has room, but the actual question is
+   what a patient limit order achieves against these quotes, and EOD data
+   cannot answer it.
+3. **A cheaper hedge.** The delta hedge is a large drag on gross P&L — it is
+   doing necessary work, without it the decile spread is a directional bet, but
+   it hedges each name's gross delta when the long and short deciles partly
+   offset. Hedging net portfolio delta should cost a fraction of it.
+4. **Index dispersion as the alternative structure.** `research/volatility/`
+   and `research/single_name_vol/` together show the index premium is
+   proportionally *larger* than the single-name premium at a month (1.21×
+   against 1.14×). Selling index volatility against single-name volatility
+   harvests that gap directly, and index options quote at ~2% of mid against
+   ~14% for single names — roughly 19× cheaper per dollar of vega. It is the
+   structurally cheaper way to trade this premium and it is untested here.

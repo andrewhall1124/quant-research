@@ -1,91 +1,75 @@
 # research/vrp_cross_section
 
-A daily cross-sectional volatility strategy on S&P 500 single names: rank every
-name on how rich its 30-day ATM straddle is, buy the cheapest decile against
-the richest, equal-weight each side by vega, delta-hedge daily. Findings are in
-**[REPORT.md](REPORT.md)**.
+A cross-sectional volatility strategy on S&P 500 single names. Buy the names
+whose options are cheap relative to their own recent history, sell the ones
+that are expensive, vega-weight both sides, delta-hedge daily, hold to expiry.
 
-The short version: the gross signal is real and well identified, and it does
-not survive its own bid-ask spread.
+Findings, methods and intuition are in **[REPORT.md](REPORT.md)**.
+
+The short version: gross Sharpe 3.15, and it can pay 89% of the quoted bid-ask
+on every crossing and still make money. On 66 formation dates, which is about
+one independent observation.
 
 ## Run it
 
 ```bash
-uv run python -m data_pipelines.open_interest                    # ~3 hr, once
-uv run python -m tools.backtest.panel --refresh               # ~5 min, cached
+uv run python -m data_pipelines.open_interest                     # ~3 hr, once
+uv run python -m tools.backtest.panel --refresh --max-dte 140     # ~10 min, cached
 uv run python -m research.vrp_cross_section.analysis \
-    --forecast-start 2023-06-01                                  # ~10 min
+    --forecast-start 2023-06-01                                   # ~15 min
+uv run python -m research.vrp_cross_section.cost_efficiency       # ~2 min
 ```
 
-`--forecast-start` reaches into `underlying_history.parquet` so the GARCH
-burn-in for the VRP variants completes before 2025 rather than eating the first
-half of the sample. `--refresh` refits the vol forecasts; without it they come
-from `tools/backtest/results/forecasts.parquet`.
+`--forecast-start` reaches into `underlying_history.parquet` so the vol-model
+burn-in completes before the option sample opens — it only matters for the two
+forecast-based signals in the race. `--refresh` refits those forecasts;
+otherwise they come from `tools/backtest/results/forecasts.parquet`.
 
-All the machinery lives in `tools/backtest/` — this module only chooses
-configurations and scores them.
+The selection panel must cover the tenors being swept: `--max-dte 140` is
+enough for the 30/60/90/120-day grid.
+
+## The strategy
+
+| | |
+|---|---|
+| Universe | S&P 500 names with a listed chain, calendar 2025 |
+| Signal | implied vol vs the name's own 60-session history (z-score) |
+| Instrument | ATM straddle, 60 days to expiry (±12), strike within 5% |
+| Screens | open interest ≥ 250, no earnings before expiry, vega ≥ $5, price ≥ $10 |
+| Portfolio | 10 deciles, long cheapest / short richest, $10k vega per side |
+| Hedge | daily delta hedge at the close |
+| Exit | held to expiration, settled at intrinsic |
+| Costs | half the quoted spread, entry only |
 
 ## Files
 
 | File | What it is |
 |---|---|
-| `analysis.py` | every configuration, figure and table |
+| `analysis.py` | the strategy, the six experiments that justify it, every figure |
 | `cost_efficiency.py` | quoted spread per dollar of vega, by tenor, price and open interest |
-| `results/open_interest_grid.csv` | the liquidity-floor sweep |
-| `results/holding_grid.csv` | the holding-period sweep |
-| `results/signal_race.csv` | five sorts through the same machinery |
-| `results/cost_grid.csv` | the same strategy charged 0 to 1x the quoted spread |
-| `results/tenor_grid.csv` | option tenor x open-interest floor, gross and net |
-| `results/turnover_grid.csv` | 120-day contracts held 21, 42 and 63 days |
-| `results/earnings_grid.csv` | the universe partitioned on earnings-before-expiry |
+| `results/strategy.csv` | the headline, gross and net |
+| `results/decile_monotonicity.csv` | all ten deciles held long — does the sort grade |
+| `results/signal_race.csv` | z-score against the textbook VRP and against an IV-level control |
+| `results/tenor_grid.csv` | tenor × liquidity floor — why 60 days and why oi≥250 |
 | `results/earnings_profile.csv` | how much of the sort the earnings calendar explains |
-| `results/expiry_grid.csv` | positions held to expiration rather than sold to close |
-| `results/decile_monotonicity.csv` | all ten deciles held long |
+| `results/earnings_partition.csv` | the universe split on earnings-before-expiry |
+| `results/exit_rule.csv` | sold-to-close against held-to-expiry |
+| `results/cost_curve.csv` | net P&L as execution gets worse |
 | `figures/*.png` | regenerated on every run |
 
-## Design in brief
+Each experiment is the strategy with exactly one thing changed, so every row in
+those tables is a controlled comparison rather than a separate backtest.
 
-- **Sample** calendar 2025, 519 S&P 500 names with an option chain. 250 trading
-  days, of which the z-score burn-in costs the first ~40.
-- **Signal** each name's ATM implied vol against its own trailing 60-day IV
-  history. The forecast-based `IV - E[RV]` definition is a variant, not the
-  strategy — see the report for why.
-- **Instrument** the ATM straddle, expiration and strike chosen point-in-time
-  from that day's chain, delta-hedged daily at the close. The headline runs use
-  a 30-day tenor; §5 of the report sweeps 30 to 120 days and finds the tenor
-  matters more than either variable the study set out to sweep.
-- **Portfolio** ten deciles, extremes traded, $10k of vega per side split
-  equally across names. Vega-neutral by construction; all P&L in dollars.
-- **Costs** a configurable fraction of the quoted spread, charged against the
-  actual quote on entry and, unless the position is held to expiry, on exit.
-  A settled position crosses once rather than twice, which halves the bill.
-- **Inference** Newey-West with `holding_days` lags on the aggregated daily
-  series. Not Driscoll-Kraay — the cross-section is summed away before anything
-  is tested. See `tools/backtest/README.md`.
+## Three things to know before reading the numbers
 
-## The three things that decide the result
-
-1. **Open interest is thin.** The median selected straddle has 19 contracts on
-   its thinner leg. A floor of 500 leaves 15 names on the median day, which is
-   one or two per decile, and `min_names_per_side` then drops most of the
-   calendar. Any filter sweep here changes the *sample*, not just the screen,
-   which is why `formation_days` is reported in every table.
-2. **Spreads are enormous.** A median 19.8% of mid, 36.8% at the 75th
-   percentile. This, not the signal, is what the study ends up being about.
-   `cost_efficiency.py` measures the quantity that actually decides it — quoted
-   spread per dollar of vega — and finds it varies almost 4x across choices
-   this study fixed arbitrarily, tenor above all.
-3. **Tenor was the wrong thing to hold fixed.** 30 days was inherited from the
-   signal definition. Gross Sharpe roughly doubles at 60-120 days, and at 120
-   days the edge stops being confined to illiquid names — it survives an
-   open-interest floor of 1,000 essentially intact, which no shorter tenor
-   does.
-4. **Earnings contaminates the sort at short tenor.** The fraction of
-   contracts with an announcement before expiry runs 0.07 to 0.75 across
-   deciles at 30 days, 0.30 to 0.85 at 60, and is flat at 0.99 at 120. The
-   P&L, though, comes from the names *without* one: excluding them raises
-   gross Sharpe 44%. Earnings is noise in the ranking, not the source of
-   returns.
-5. **One year is not enough.** ~200 overlapping days is ~10 independent
-   observations, over a window with one dominant shock. The grid searched more
-   configurations than the sample can support.
+1. **The sample is one year and the strategy holds for 60 days.** 66 formation
+   dates is roughly one independent observation. The net result is not
+   statistically distinguishable from zero, and `REPORT.md` §7 says so before
+   it says anything else.
+2. **This configuration survived a long search** — roughly 145 were evaluated.
+   Treat t-statistics as ranking devices, not p-values.
+3. **The mechanics generalise even though the performance number may not.**
+   Holding to expiry halves the spread bill by arithmetic; vega growing as √T
+   while spreads stay tick-driven is a property of option pricing; a short-dated
+   IV sort ranking the earnings calendar is visible in the data without any
+   P&L. Those survive any sample.
