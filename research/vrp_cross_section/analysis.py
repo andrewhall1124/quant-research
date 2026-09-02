@@ -56,8 +56,14 @@ from tools.backtest.eligibility import (
     MinUnderlyingPrice,
     RequireEarningsBeforeExpiry,
 )
-from tools.backtest.signals import IvLevelSignal, IvZScoreSignal, VrpSignal
-from tools.backtest.structures import AtmStraddle
+from tools.backtest.signals import (
+    EarningsNeutral,
+    IvLevelSignal,
+    IvZScoreSignal,
+    VrpSignal,
+)
+from tools.backtest.portfolio import assign_quantiles
+from tools.backtest.structures import AtmStraddle, summarize_positions
 
 HERE = Path(__file__).resolve().parent
 FIGURES = HERE / "figures"
@@ -269,6 +275,62 @@ def run_turnover_grid(context) -> tuple[pl.DataFrame, list]:
     return metrics.compare(results), results
 
 
+def earnings_profile(context) -> pl.DataFrame:
+    """How much of the sort is explained by the earnings calendar, by tenor.
+
+    The diagnostic behind §6. For each tenor it reports, per decile, the
+    fraction of selected contracts whose life contains an announcement. A
+    monotone column means the sort is partly ranking the earnings calendar
+    rather than the volatility premium.
+    """
+    base_signal = IvZScoreSignal(window=IV_WINDOW, min_periods=IV_MIN_PERIODS)
+    rows = []
+    for target_dte, dte_error in ((30, 7), (60, 12), (120, 20)):
+        legs_df = AtmStraddle(
+            target_dte=target_dte, max_dte_error=dte_error, max_moneyness=0.05
+        ).select(context.selection_df)
+        positions_df = summarize_positions(legs_df).join(
+            context.earnings_df, on=["symbol", "date"], how="left"
+        ).with_columns(
+            (pl.col("days_to_earnings") <= pl.col("dte")).alias("earnings_before_expiry")
+        )
+        ranked = assign_quantiles(base_signal.attach(positions_df, context.forecasts_df), 10)
+        summary = ranked.group_by("quantile").agg(
+            pl.col("earnings_before_expiry").fill_null(False).mean().alias("frac_earnings_in_life"),
+            pl.col("days_to_earnings").median().alias("median_days_to_earnings"),
+            pl.col("atm_iv").mean().alias("mean_iv"),
+        ).sort("quantile").with_columns(pl.lit(target_dte).alias("tenor"))
+        rows.append(summary)
+    return pl.concat(rows).select("tenor", "quantile", "frac_earnings_in_life",
+                                  "median_days_to_earnings", "mean_iv")
+
+
+def plot_earnings(profile_df: pl.DataFrame, filename: str) -> None:
+    """The mechanism behind the tenor result, in one panel."""
+    figure, axes = plt.subplots(1, 2, figsize=(12.5, 4.3))
+    colours = {30: "#C44E52", 60: "#DD8452", 120: "#4C72B0"}
+    for tenor, colour in colours.items():
+        subset = profile_df.filter(pl.col("tenor") == tenor).sort("quantile")
+        if subset.height == 0:
+            continue
+        axes[0].plot(subset["quantile"], subset["frac_earnings_in_life"], marker="o",
+                     color=colour, lw=1.8, label=f"{tenor}-day")
+        axes[1].plot(subset["quantile"], subset["median_days_to_earnings"], marker="o",
+                     color=colour, lw=1.8, label=f"{tenor}-day")
+    axes[0].set_ylim(0, 1.05)
+    axes[0].set_ylabel("fraction with earnings before expiry")
+    axes[0].set_title("What the sort is actually ranking")
+    axes[1].set_ylabel("median days to next announcement")
+    axes[1].set_title("Distance to the announcement")
+    for axis in axes:
+        axis.set_xlabel("richness decile  (0 = cheapest, 9 = richest)")
+        axis.set_xticks(range(10))
+        axis.legend(frameon=False, fontsize=8, title="option tenor", title_fontsize=8)
+    figure.tight_layout()
+    figure.savefig(FIGURES / filename)
+    plt.close(figure)
+
+
 def run_earnings_grid(context) -> tuple[pl.DataFrame, list]:
     """Split the strategy on whether an announcement falls inside the contract.
 
@@ -290,14 +352,23 @@ def run_earnings_grid(context) -> tuple[pl.DataFrame, list]:
         (30, 7, 25, (RequireEarningsBeforeExpiry(),), "30d earnings-in-life"),
         (30, 7, 25, (ExcludeEarningsBeforeExpiry(),), "30d no-earnings-in-life"),
         (30, 7, 25, (ExcludeEarningsWithin(10),), "30d no-earnings-within-10d"),
+        (30, 7, 25, (), "30d earnings-neutral", True),
+        (60, 12, 100, (), "60d all"),
+        (60, 12, 100, (ExcludeEarningsBeforeExpiry(),), "60d no-earnings-in-life"),
+        (60, 12, 100, (), "60d earnings-neutral", True),
         (120, 20, 100, (), "120d all"),
         (120, 20, 100, (ExcludeEarningsWithin(10),), "120d no-earnings-within-10d"),
+        (120, 20, 100, (), "120d earnings-neutral", True),
     ]
-    for target_dte, dte_error, floor, extra, label in cases:
+    base_signal = IvZScoreSignal(window=IV_WINDOW, min_periods=IV_MIN_PERIODS)
+    for case in cases:
+        target_dte, dte_error, floor, extra, label = case[:5]
+        neutral = len(case) > 5 and case[5]
         structure = AtmStraddle(target_dte=target_dte, max_dte_error=dte_error, max_moneyness=0.05)
         for fraction in (0.0, NET_COST_FRACTION):
             config = baseline_config(
                 structure=structure,
+                signal=EarningsNeutral(base_signal) if neutral else base_signal,
                 eligibility=BASE_FILTERS + (MinOpenInterest(floor),) + extra,
                 spread_cost_fraction=fraction,
                 label=f"{label} cost={fraction:g}",
@@ -531,6 +602,7 @@ def main() -> None:
     turnover_df, turnover_results = run_turnover_grid(context)
     print("earnings partition")
     earnings_df, earnings_results = run_earnings_grid(context)
+    profile_df = earnings_profile(context)
 
     decile_df = metrics.decile_table(baseline.decile_pnl, HORIZON)
 
@@ -541,6 +613,7 @@ def main() -> None:
     tenor_df.write_csv(RESULTS / "tenor_grid.csv")
     turnover_df.write_csv(RESULTS / "turnover_grid.csv")
     earnings_df.write_csv(RESULTS / "earnings_grid.csv")
+    profile_df.write_csv(RESULTS / "earnings_profile.csv")
     decile_df.write_csv(RESULTS / "decile_monotonicity.csv")
     baseline.daily_pnl.write_csv(RESULTS / "baseline_daily_pnl.csv")
 
@@ -549,6 +622,7 @@ def main() -> None:
     plot_grid(oi_df, holding_df, "03_grids.png")
     plot_costs(cost_df, "04_costs.png")
     plot_tenor(tenor_df, "05_tenor.png")
+    plot_earnings(profile_df, "06_earnings.png")
 
     print("\n=== open interest ===")
     print(oi_df)

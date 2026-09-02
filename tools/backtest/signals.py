@@ -124,6 +124,39 @@ class IvZScoreSignal:
         )
 
 
+class EarningsNeutral:
+    """Wrap a signal and rank it within earnings groups rather than across them.
+
+    A cross-sectional implied-vol sort loads on earnings timing whether or not
+    that is the intent: at a 30-day tenor the fraction of contracts with an
+    announcement before expiry runs 0.07 in the cheapest decile to 0.75 in the
+    richest. Excluding those names answers whether the signal survives without
+    them, but costs a third of the formation days, because a decile sort needs
+    a deep cross-section and the remainder is not deep.
+
+    Demeaning instead keeps every name. The base score is centred within
+    (date, earnings-before-expiry), so a contract is ranked against others
+    facing the same announcement status and the binary cannot drive the sort.
+    Whatever premium is left is what the strategy is actually harvesting.
+    """
+
+    def __init__(self, base):
+        self.base = base
+        self.name = f"{base.name}_earnings_neutral"
+
+    def attach(self, positions_df: pl.DataFrame, forecasts_df: pl.DataFrame) -> pl.DataFrame:
+        scored = self.base.attach(positions_df, forecasts_df)
+        if "earnings_before_expiry" not in scored.columns:
+            raise ValueError(
+                "EarningsNeutral needs `earnings_before_expiry`; it is attached by "
+                "the engine from the context's earnings table"
+            )
+        group = pl.col("earnings_before_expiry").fill_null(False)
+        return scored.with_columns(
+            (pl.col("score") - pl.col("score").mean().over("date", group)).alias("score")
+        ).filter(pl.col("score").is_not_null(), pl.col("score").is_finite())
+
+
 def build_forecasts(
     returns_df: pl.DataFrame,
     horizon: int = 21,

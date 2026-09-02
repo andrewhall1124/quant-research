@@ -196,10 +196,19 @@ tradeability is quoted spread per dollar of vega, `(ask - bid) * 100 / vega`
 (`cost_efficiency.py`): it falls 46% from 30-day to 120-day contracts (ATM vega
 grows as sqrt(T), spreads are tick-driven) and another 2.5x from the thinnest
 to the richest OI bucket, while underlying price does not move it at all. The
-respec takes break-even from 0.146 to 0.385 against the 0.5 needed — still
+respec takes break-even from 0.146 to 0.393 against the 0.5 needed — still
 untradeable, but off by 1.3x rather than 3.4x. Holding longer does not close
 the rest: the signal has a half-life, so gross P&L per day decays about as fast
-as turnover cost falls.
+as turnover cost falls. **The earnings calendar explains the tenor result**:
+the fraction of contracts with an announcement before expiry runs 0.07 to 0.75
+across deciles at 30 days and is flat at 0.99 at 120, so a short-dated IV sort
+is substantially ranking the earnings calendar. But the P&L comes from the
+names *without* one — excluding them raises gross Sharpe 44% at both 30 and 60
+days — so earnings is a contaminant of the ranking, not the source of returns.
+Demeaning within earnings groups is worse than excluding (and worse than doing
+nothing at 60 days); at 120 days conditioning changes the result by 0.0009
+Sharpe, because there is nothing left to neutralize. Earnings conditioning is a
+signal-quality lever, not a cost one.
 
 `research/data_quality/` — audit behind the corporate-actions work. The feed
 itself is near-spotless: over 114M stored

@@ -9,11 +9,12 @@ with a Newey-West t of 5.9. It can afford to cross **25.4%** of the quoted
 spread each way. The ordinary assumption is 50%. At that level it loses
 $824k, and the gross Sharpe of 5.87 becomes −4.77.
 
-Sections 1-4 are the strategy as originally specified: a 30-day straddle. §5 is
-the respec that followed from asking where the costs actually come from, and it
-is the more useful half of the report — the option tenor turns out to matter
-more than either variable the study set out to sweep, and it takes break-even
-from 0.146 to 0.385 without making the strategy tradeable.
+Sections 1-4 are the strategy as originally specified: a 30-day straddle. §5
+and §6 are the respec, and they are the more useful half of the report. The
+option tenor matters more than either variable the study set out to sweep, and
+the earnings calendar explains why. Together they take gross Sharpe from 1.65
+to 3.95 and break-even from 0.146 to 0.393 — a much better strategy, and still
+not a tradeable one.
 
 Everything else here is either evidence that the gross signal is real, or
 evidence about why it is untradeable.
@@ -193,7 +194,79 @@ costs from *quotes*, not from fills, and has no evidence about achievable price
 improvement. The honest position is that the strategy moved from "off by 3.4x"
 to "off by 1.3x, contingent on execution quality not measured here".
 
-## 6. The hedge is a large drag
+## 6. Earnings: a contaminant of the sort, not the source of the P&L
+
+§5 left an open question — why does gross performance roughly double with
+tenor? The earnings calendar answers it.
+
+**Fraction of selected contracts whose life contains an announcement:**
+
+| decile | 0 | 2 | 4 | 6 | 8 | 9 |
+|---|---|---|---|---|---|---|
+| 30-day | 0.07 | 0.18 | 0.27 | 0.34 | 0.49 | **0.75** |
+| 60-day | 0.30 | 0.51 | 0.62 | 0.67 | 0.79 | 0.85 |
+| 120-day | 0.99 | 0.99 | 1.00 | 0.99 | 0.99 | 0.99 |
+
+![earnings](figures/06_earnings.png)
+
+At 30 days the sort is very largely ranking the earnings calendar: "rich"
+mostly means "an announcement lands before this contract expires". At 120 days
+every contract contains one, so the binary is constant and cannot influence the
+ranking at all. The 60-day case sits in between.
+
+**But the P&L is not the earnings trade.** Partitioning the universe and
+running each half as its own strategy:
+
+| | formation days | gross Sharpe | t (NW) | break-even |
+|---|---|---|---|---|
+| 30d, all | 161 | 1.65 | 2.23 | 0.146 |
+| 30d, earnings in life | 31 | 0.94 | 0.73 | 0.107 |
+| 30d, **no** earnings in life | 102 | **2.39** | 2.13 | 0.170 |
+| 60d, all | 163 | 2.73 | 3.12 | 0.385 |
+| 60d, **no** earnings in life | 72 | **3.95** | 3.18 | **0.393** |
+
+The signal is *stronger* with the earnings names removed, not weaker. So
+earnings is a **contaminant of the ranking**, not the source of the returns:
+it decides which names land in which decile, while the money comes from the
+names without an announcement in the contract's life. Removing them raises
+gross Sharpe by 44-45% at both tenors.
+
+That also revises §5's explanation. The longer tenor does not work by removing
+an earnings *profit* channel; it works by removing an earnings *noise* channel
+from the ranking. Both tenors harvest the same premium, and the short one
+simply has an artifact sitting on top of its sort.
+
+### Two controls worth reporting
+
+**Demeaning does not substitute for exclusion.** Ranking within
+earnings-status groups rather than across them — which keeps every name and so
+costs no formation days — is worse than exclusion everywhere, and at 60 days
+worse than doing nothing (2.28 against 2.73). The two groups appear to carry
+genuinely different premia, so discarding the between-group difference destroys
+information rather than cleaning it.
+
+**At 120 days earnings conditioning does nothing, which is the point.**
+Earnings-neutral demeaning returns 2.0747 against 2.0738 for the untouched
+baseline: identical to four significant figures, because there is nothing left
+to neutralize once the binary is constant. A wrong mechanism would not have
+produced that null.
+
+The blunter screens agree. Excluding names announcing within 10 calendar days
+of formation *hurts* at both 30 days (1.50 against 1.65) and 120 days (1.73
+against 2.07): it is the expiry test that matters, not proximity to the event.
+
+### It does not rescue tradeability
+
+Best break-even in the entire study is now **0.393** — 60-day tenor, oi>=100,
+earnings excluded — against the 0.5 an ordinary half-spread assumption demands.
+Earnings conditioning is a **signal-quality lever, not a cost lever**: it
+raises gross Sharpe 44% while trading a third as often, so break-even barely
+moves (0.385 to 0.393). Cost is the binding constraint and this does not touch
+it. Formation days also fall from 163 to 72, which at a 21-day hold is roughly
+three and a half independent observations, and the t of 3.18 should be read
+with that in front of it.
+
+## 7. The hedge is a large drag
 
 Gross P&L decomposes into **+$350k from the options and −$180k from the delta
 hedge** at the 21-day hold. The hedge is doing its job — without it the book
@@ -207,7 +280,7 @@ curve rises fairly steadily rather than being one event.
 
 ![equity](figures/01_equity.png)
 
-## 7. What this sample cannot establish
+## 8. What this sample cannot establish
 
 - **~200 overlapping days is ~10 independent observations.** Newey-West at
   `holding_days` lags is applied throughout, but no correction manufactures
@@ -223,7 +296,7 @@ curve rises fairly steadily rather than being one event.
   1.65 (60-day) to 3.90 (20-day). A result that swings that much on one free
   parameter is not yet a strategy.
 
-## 8. What would actually move this forward
+## 9. What would actually move this forward
 
 1. **More history.** STANDARD reaches 2016 for options. Everything above is one
    year, and the honest limit on every conclusion here is sample size.
@@ -263,7 +336,7 @@ curve rises fairly steadily rather than being one event.
 3. **A liquid-subset study with fewer buckets.** Deciles fail on a thin
    cross-section, but terciles or a fixed top-/bottom-N on the ~100 most liquid
    names would keep the sample intact while trading names that can absorb it.
-4. **Earnings conditioning.** Untouched here. A cross-sectional IV sort is known
-   to load on earnings timing, and `dal.with_earnings_distance` exists precisely
-   to separate the two. Some of the "cheap vs rich" spread is likely a
-   pre/post-announcement effect rather than a premium.
+4. **Fills, not quotes.** Everything here charges the quoted spread. At a
+   break-even of 0.393 the whole question is whether a patient limit order
+   beats 39% of quoted, and this data — EOD quotes, no fills — cannot answer
+   it. It is the single largest remaining uncertainty.

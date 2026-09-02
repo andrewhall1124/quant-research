@@ -37,6 +37,8 @@ configurations and scores them.
 | `results/cost_grid.csv` | the same strategy charged 0 to 1x the quoted spread |
 | `results/tenor_grid.csv` | option tenor x open-interest floor, gross and net |
 | `results/turnover_grid.csv` | 120-day contracts held 21, 42 and 63 days |
+| `results/earnings_grid.csv` | the universe partitioned on earnings-before-expiry |
+| `results/earnings_profile.csv` | how much of the sort the earnings calendar explains |
 | `results/decile_monotonicity.csv` | all ten deciles held long |
 | `figures/*.png` | regenerated on every run |
 
@@ -76,6 +78,12 @@ configurations and scores them.
    days the edge stops being confined to illiquid names — it survives an
    open-interest floor of 1,000 essentially intact, which no shorter tenor
    does.
-4. **One year is not enough.** ~200 overlapping days is ~10 independent
+4. **Earnings contaminates the sort at short tenor.** The fraction of
+   contracts with an announcement before expiry runs 0.07 to 0.75 across
+   deciles at 30 days, 0.30 to 0.85 at 60, and is flat at 0.99 at 120. The
+   P&L, though, comes from the names *without* one: excluding them raises
+   gross Sharpe 44%. Earnings is noise in the ranking, not the source of
+   returns.
+5. **One year is not enough.** ~200 overlapping days is ~10 independent
    observations, over a window with one dominant shock. The grid searched more
    configurations than the sample can support.
