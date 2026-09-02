@@ -23,6 +23,10 @@ YIELDS = DATA_STORE / "yields.parquet"
 RATES = DATA_STORE / "rates.parquet"
 FRED_RATES = DATA_STORE / "fred_rates.parquet"
 
+# Per-symbol-year verdict on whether a backfilled option root is the company
+# the universe says it is. See data_pipelines/symbology.py.
+SYMBOLOGY_CHECK = DATA_STORE / "symbology_check.parquet"
+
 # Splits and dividends from Yahoo, plus the per-symbol close-agreement check
 # that says which of those names can be trusted.
 CORPORATE_ACTIONS = DATA_STORE / "corporate_actions.parquet"
@@ -100,6 +104,7 @@ DATASETS = {
     "fred_rates": FRED_RATES,
     "corporate_actions": CORPORATE_ACTIONS,
     "ticker_check": TICKER_CHECK,
+    "symbology_check": SYMBOLOGY_CHECK,
     "earnings": EARNINGS,
     "options": OPTIONS_DIR,
     "open_interest": OPEN_INTEREST_DIR,
