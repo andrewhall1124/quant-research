@@ -314,73 +314,30 @@ def load_option_greeks(
     symbol: str,
     start: date | None = None,
     end: date | None = None,
-    min_dte: int | None = None,
-    max_dte: int | None = None,
-    max_moneyness: float | None = None,
-    max_iv_error: float | None = None,
-) -> pl.DataFrame:
-    """One symbol's EOD chain with vendor greeks, IV and the struck spot.
-
-    Same shape as `load_option_chain` plus the greeks columns, with three
-    differences that matter:
-
-    * the session date comes from `underlying_timestamp`, not `timestamp` —
-      the latter is the contract's last trade, which can be hours earlier or,
-      for an untraded contract, midnight;
-    * `underlying_price` is in the file, struck at the same instant as the
-      quote, so `moneyness` needs no join;
-    * `implied_vol` is only as good as `iv_error`. About 3% of contract-days
-      fail to invert and come back pinned at 0.5 with an error of +/-100.
-      `max_iv_error` drops them.
-    """
-    path = require(
-        paths.option_chain_path(symbol, greeks=True),
-        f"data_pipelines.option_greeks --symbols {symbol.upper()}",
-    )
-    frame = (
-        pl.scan_parquet(path)
-        .with_columns(
-            pl.col("underlying_timestamp").dt.date().alias("date"),
-            pl.col("expiration").str.strptime(pl.Date, "%Y-%m-%d").alias("expiration"),
-            ((pl.col("bid") + pl.col("ask")) / 2).alias("mid"),
-        )
-        .with_columns(
-            (pl.col("expiration") - pl.col("date")).dt.total_days().alias("dte"),
-            (pl.col("strike") / pl.col("underlying_price") - 1).alias("moneyness"),
-        )
-    )
-    frame = in_window(frame, start, end)
-    if min_dte is not None:
-        frame = frame.filter(pl.col("dte") >= min_dte)
-    if max_dte is not None:
-        frame = frame.filter(pl.col("dte") <= max_dte)
-    if max_moneyness is not None:
-        frame = frame.filter(pl.col("moneyness").abs() <= max_moneyness)
-    if max_iv_error is not None:
-        frame = frame.filter(pl.col("iv_error").abs() <= max_iv_error)
-    return frame.sort("date", "expiration", "strike", "right").collect()
-
-
-def load_option_greeks(
-    symbol: str,
-    start: date | None = None,
-    end: date | None = None,
     rights: str | list[str] | None = None,
     min_dte: int | None = None,
     max_dte: int | None = None,
     max_moneyness: float | None = None,
+    max_iv_error: float | None = None,
     quoted_only: bool = False,
     columns: list[str] | None = None,
 ) -> pl.DataFrame:
     """One symbol's EOD chain with greeks, IV and the underlying price.
 
     Supersedes `load_option_chain` for anything needing more than trade and
-    quote fields — the underlying schema is a strict superset. Two differences
-    from that loader worth knowing:
+    quote fields — the underlying schema is a strict superset. Three
+    differences from that loader worth knowing:
 
-    - The session stamp is `timestamp`, not `created`.
+    - The session stamp is `underlying_timestamp`, not `created`. It is the
+      stamp on the spot print the greeks were struck against, so it is defined
+      even for a contract that never traded; `timestamp` is the contract's own
+      last trade. The two agree on the date throughout the 2025 store, checked
+      symbol by symbol, but only the former is guaranteed to.
     - `moneyness` needs no join, because `underlying_price` is on the row and
       was struck at the same instant as the option quote.
+    - `implied_vol` is only as good as `iv_error`. About 3% of contract-days
+      fail to invert and come back pinned near 0.5 with an error of +/-100;
+      `max_iv_error` drops them.
 
     `quoted_only` drops contracts with no quote, which is also where
     `implied_vol` comes back as 0.0 rather than null.
@@ -392,7 +349,7 @@ def load_option_greeks(
     frame = (
         pl.scan_parquet(path)
         .with_columns(
-            pl.col("timestamp").dt.date().alias("date"),
+            pl.col("underlying_timestamp").dt.date().alias("date"),
             pl.col("expiration").str.strptime(pl.Date, "%Y-%m-%d").alias("expiration"),
             ((pl.col("bid") + pl.col("ask")) / 2).alias("mid"),
         )
@@ -412,6 +369,8 @@ def load_option_greeks(
         frame = frame.filter(pl.col("dte") <= max_dte)
     if max_moneyness is not None:
         frame = frame.filter(pl.col("moneyness").abs() <= max_moneyness)
+    if max_iv_error is not None:
+        frame = frame.filter(pl.col("iv_error").abs() <= max_iv_error)
     if quoted_only:
         frame = frame.filter((pl.col("bid") > 0) & (pl.col("implied_vol") > 0))
 

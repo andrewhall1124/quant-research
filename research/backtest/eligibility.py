@@ -70,6 +70,27 @@ class MinUnderlyingPrice:
         return pl.col("underlying_price") >= self.threshold
 
 
+class MinStructureVega:
+    """Require the structure to carry at least `threshold` dollars of vega.
+
+    Sizing solves `quantity = target_vega / structure_vega`, so a structure
+    whose vega is near zero demands an absurd number of contracts to fill a
+    vega budget — in the 2025 sample the thinnest straddles carry about $1.20
+    of vega and would need 8,000 contracts to reach a $10k target. Those are
+    not positions, they are a lever that multiplies whatever noise is in the
+    quote. This is the filter that keeps the sizing sane, and it belongs here
+    rather than as a hard-coded guard so its threshold can be swept like any
+    other.
+    """
+
+    def __init__(self, threshold: float):
+        self.threshold = threshold
+        self.name = f"vega>={threshold:g}"
+
+    def mask(self) -> pl.Expr:
+        return pl.col("vega").abs() >= self.threshold
+
+
 class MinPremium:
     """Drop structures whose total premium is too small to be worth a round trip."""
 
