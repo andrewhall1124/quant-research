@@ -303,13 +303,67 @@ The strategy stays profitable while paying three-quarters of the quoted spread
 every time it trades. That is the margin of safety the earlier 30-day
 specification never had.
 
-## 7. What this sample cannot establish
+## 7. Out of sample: 2024
+
+Every choice in this study was made looking at 2025 — the tenor, the liquidity
+floor, the earnings screen, the exit rule, the signal itself. 2024 is therefore
+a genuine out-of-sample year, and it is the only test that can distinguish a
+real effect from a specification fitted to its own sample.
+
+Gross, across both years, **without the open-interest floor** (the 2024
+open-interest backfill is incomplete, and a partially pulled year would
+restrict the sample alphabetically rather than by liquidity):
+
+| period | days | mean daily | t (NW) | Sharpe |
+|---|---|---|---|---|
+| **2024 (out of sample)** | 176 | $737 | 1.75 | **2.54** |
+| 2025 (in sample) | 250 | $1,157 | 4.09 | 3.32 |
+| pooled | 426 | $984 | **4.06** | 3.02 |
+
+**It replicates.** Same sign, comparable magnitude, in a year that was not
+consulted when any parameter was chosen. 2024 alone does not clear
+significance on its own — t = 1.75 — but the pooled series now rests on 248
+formation dates across ~22-session cohorts, on the order of **eleven**
+independent observations rather than the one §7 previously had to work with.
+
+The signal ordering replicates as well, which is the mechanism holding rather
+than just the P&L:
+
+| signal | 2024 | 2025 |
+|---|---|---|
+| IV z-score | **2.54** | **3.32** |
+| VRP, GARCH forecast | 1.15 | 1.67 |
+| IV level (control) | **−0.91** | **−1.16** |
+
+Same ranking in both years, and the control — long low-vol, short high-vol —
+loses in both. Whatever the strategy is capturing, it is not a volatility-level
+tilt, and that was not an accident of one year.
+
+### What this does not establish
+
+Net of half the quoted spread, both years are negative: −2.15 in 2024 and
+−1.90 in 2025. That is expected rather than contradictory. These runs carry no
+liquidity screen, and §4 and §6 both showed that the open-interest floor is
+precisely what makes the strategy affordable — without it the book trades
+wide-spread names and execution consumes the edge.
+
+So the two halves of the result now separate cleanly:
+
+* **The signal is real and replicates out of sample.** Two years, same sign,
+  same ordering, control failing in both.
+* **Whether it is tradeable rests entirely on the liquidity screen**, and the
+  two-year version of that number is waiting on the 2024 open-interest
+  backfill. §1's headline — break-even 0.886 — is a 2025-only figure.
+
+## 8. What this sample cannot establish
 
 Everything above is one calendar year. The limits are severe and they all point
 the same way.
 
-- **66 formation dates at a ~60-day hold is on the order of one independent
-  observation.** The gross t of 2.91 and the net t of 1.12 are computed with
+- **The headline is 2025 only.** §7 extends the *signal* to 2024 and it
+  replicates, but the liquidity-screened strategy behind the break-even of
+  0.886 still rests on 66 formation dates at a ~60-day hold — on the order of
+  one independent observation. The gross t of 2.91 and the net t of 1.12 are computed with
   Newey-West at 15 lags, which is the right correction and does not manufacture
   information that is not there. The net result is not statistically
   distinguishable from zero.
@@ -334,21 +388,25 @@ visible directly in the data and needs no P&L to believe. Those findings will
 hold in any sample. Whether this strategy earns Sharpe 1.35 net will not be
 known until it is run on more than one year.
 
-## 8. What would move this forward
+## 9. What would move this forward
 
-1. **More history, and it is now the only thing that matters.** ThetaData's
-   STANDARD tier reaches 2016 for options. Re-running §3-§6 on a decade turns
-   ~1 independent observation into ~40 and would settle this. Every other item
-   here is secondary.
-2. **Fills rather than quotes.** Costs are charged against the quoted spread.
+1. **Finish the 2024 open-interest backfill, then re-run §1-§6 on both years.**
+   The option data for 2024 is already in place and §7 shows the signal
+   replicating on it; what is missing is the open interest the liquidity screen
+   needs. That single pull doubles the formation dates behind every number in
+   this report.
+2. **Then more history.** ThetaData's STANDARD tier reaches 2016. Two years is
+   ~11 independent observations; a decade is ~40, which is where this stops
+   being suggestive.
+3. **Fills rather than quotes.** Costs are charged against the quoted spread.
    At a break-even of 0.886 the strategy has room, but the actual question is
    what a patient limit order achieves against these quotes, and EOD data
    cannot answer it.
-3. **A cheaper hedge.** The delta hedge is a large drag on gross P&L — it is
+4. **A cheaper hedge.** The delta hedge is a large drag on gross P&L — it is
    doing necessary work, without it the decile spread is a directional bet, but
    it hedges each name's gross delta when the long and short deciles partly
    offset. Hedging net portfolio delta should cost a fraction of it.
-4. **Index dispersion as the alternative structure.** `research/volatility/`
+5. **Index dispersion as the alternative structure.** `research/volatility/`
    and `research/single_name_vol/` together show the index premium is
    proportionally *larger* than the single-name premium at a month (1.21×
    against 1.14×). Selling index volatility against single-name volatility

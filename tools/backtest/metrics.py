@@ -79,6 +79,24 @@ def break_even_spread(daily_pnl: pl.DataFrame, charged_fraction: float) -> float
     return charged_fraction * gross / charged
 
 
+def by_period(result, periods: dict) -> pl.DataFrame:
+    """Split one run's daily P&L into sub-periods and score each.
+
+    For out-of-sample reading: a strategy specified on one year and run across
+    two should be scored on each separately, not only pooled. The Newey-West
+    lag is the run's realized hold in every sub-period, since that is a
+    property of the position rather than of the window.
+    """
+    lag = effective_lag(result)
+    rows = []
+    for label, mask in periods.items():
+        frame = result.daily_pnl.filter(mask) if mask is not None else result.daily_pnl
+        if frame.height < lag + 5:
+            continue
+        rows.append({"period": label, **summarize(frame, lag)})
+    return pl.DataFrame(rows)
+
+
 def decile_table(decile_pnl: pl.DataFrame, holding_days: int) -> pl.DataFrame:
     """Mean daily P&L by quantile — the monotonicity check.
 

@@ -28,6 +28,7 @@ from pathlib import Path
 import polars as pl
 
 import data_access_layer as dal
+from data_access_layer import paths
 from tools.backtest import panel as panel_module
 from tools.backtest import pnl as pnl_module
 from tools.backtest.config import BacktestConfig, BacktestResult
@@ -40,35 +41,20 @@ from tools.backtest.structures import summarize_positions
 def build_returns(start: date | None = None, end: date | None = None) -> pl.DataFrame:
     """Split-adjusted log returns for the names whose adjustment is verified.
 
-    Identical construction to `research/single_name_vol/panel.py`, and for the
-    same reasons: raw prices, six 2025 splits and a spinoff, a reused ticker
-    with pre-listing stub rows. Each of `trusted_symbols`, `with_actions`,
-    `in_universe` and `split_adjusted_return` removes a different artefact.
+    Same construction as `research/single_name_vol/`, and for the same reasons:
+    prices are raw, so a split books a -60% day; `trusted_symbols` keeps the
+    names whose adjustment agrees with a second source; `in_universe` drops the
+    pre-listing stub rows a reused ticker carries.
 
-    Reaching before 2025 needs care, because the point-in-time membership table
-    only covers the option window — asking for `in_universe` over 2023 returns
-    nothing. So the two periods are spliced rather than loaded together: the
-    option window is universe-restricted as usual, and the pre-sample history
-    is restricted to the symbols that survived that restriction. The history is
-    only ever used to burn a volatility model in, never to form a position, so
-    it needs to be clean rather than point-in-time.
+    `with_history` reaches back before the option sample so a volatility model
+    burns in on real returns rather than on the first months of the backtest.
+    It widens the membership table to match, so the extra years survive the
+    `in_universe` filter instead of being dropped straight back out.
     """
-    panel_df = dal.load_underlying(
-        dal.trusted_symbols(), None, end, with_actions=True, in_universe=True
+    prices_df = dal.load_underlying(
+        dal.trusted_symbols(), start, end,
+        with_actions=True, in_universe=True, with_history=True,
     )
-    frames = [panel_df]
-
-    if start is not None and start < panel_df["date"].min():
-        history_df = dal.load_underlying(
-            panel_df["symbol"].unique().to_list(),
-            start,
-            panel_df["date"].min(),
-            with_actions=True,
-            with_history=True,
-        ).filter(pl.col("date") < panel_df["date"].min())
-        frames.insert(0, history_df)
-
-    prices_df = pl.concat(frames, how="vertical_relaxed").unique(subset=["symbol", "date"])
     return (
         prices_df.sort("symbol", "date")
         .with_columns(dal.split_adjusted_return().over("symbol"))
@@ -88,6 +74,7 @@ class BacktestContext:
     splits_df: pl.DataFrame
     calendar_df: pl.DataFrame
     earnings_df: pl.DataFrame
+    years: list = field(default_factory=list)
     marks_cache: dict = field(default_factory=dict)
 
 
@@ -100,6 +87,7 @@ def build_context(
     selection_path=None,
     forecast_cache=None,
     refresh: bool = False,
+    years: list[int] | None = None,
 ) -> BacktestContext:
     """Load the selection panel and fit the vol forecasts.
 
@@ -108,6 +96,8 @@ def build_context(
     2025 underlying on disk a 120-day burn-in costs roughly half the backtest;
     with 2023-2024 loaded as well it costs none of it.
     """
+    if years is None:
+        years = paths.available_years("option_greeks")
     selection_df = (
         panel_module.load_selection_panel()
         if selection_path is None
@@ -136,6 +126,8 @@ def build_context(
         forecasts_df.write_parquet(cache_path)
 
     underlying_df = pnl_module.load_hedge_prices(forecast_start, end)
+    print(f"context: {selection_df['date'].min()} .. {selection_df['date'].max()}"
+          f" | years {years}", flush=True)
     splits_df = underlying_df.filter(pl.col("split_ratio") != 1.0).select(
         "symbol", "date", "split_ratio"
     )
@@ -182,6 +174,7 @@ def build_context(
         splits_df=splits_df,
         calendar_df=calendar_df,
         earnings_df=earnings_df,
+        years=list(years),
     )
 
 
@@ -221,7 +214,9 @@ def get_marks(
 
     if cache_key not in context.marks_cache:
         print(f"  fetching marks for {contracts_df.height:,} contracts", flush=True)
-        context.marks_cache[cache_key] = panel_module.build_marks_panel(contracts_df)
+        context.marks_cache[cache_key] = panel_module.build_marks_panel(
+            contracts_df, years=context.years or None
+        )
     return context.marks_cache[cache_key]
 
 

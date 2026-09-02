@@ -365,7 +365,12 @@ def load_hedge_prices(start=None, end=None) -> pl.DataFrame:
     Same discipline `research/single_name_vol/` needed: raw prices, verified
     symbols, point-in-time membership. A hedge marked against an unadjusted
     split books a fictional six-figure gain on one day.
+
+    `with_history` so the prices span every year the option store covers; a
+    hedge that stops at the start of the option sample silently truncates the
+    backtest to whatever the price panel happens to hold.
     """
     return dal.load_underlying(
-        dal.trusted_symbols(), start, end, with_actions=True, in_universe=True
+        dal.trusted_symbols(), start, end,
+        with_actions=True, in_universe=True, with_history=True,
     ).select("date", "symbol", "close", "split_ratio", "dividend")

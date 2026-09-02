@@ -319,6 +319,43 @@ def run_exit_rule(context) -> tuple[pl.DataFrame, list]:
     return metrics.compare(results), results
 
 
+def run_out_of_sample(context) -> pl.DataFrame:
+    """Score the strategy separately in each year it can be run on.
+
+    Every choice in this study — tenor, liquidity floor, earnings screen, exit
+    rule, the signal itself — was made looking at 2025. 2024 is therefore a
+    genuine out-of-sample year, and the question it answers is the one a
+    single-year backtest cannot: does the signal replicate, or was the
+    specification fitted to its own sample?
+
+    Run without the open-interest floor, because that screen needs an
+    open-interest backfill this study does not yet have for 2024, and a
+    partially pulled year would restrict the sample alphabetically rather than
+    by liquidity. The consequence is that the *net* numbers here are not the
+    strategy's — without the liquidity screen it cannot pay its spread, which
+    §6 already established. The gross numbers are the out-of-sample evidence.
+    """
+    filters = HYGIENE + (ExcludeEarningsBeforeExpiry(),)
+    years = sorted(context.selection_df["date"].dt.year().unique().to_list())
+    periods = {str(year): pl.col("date").dt.year() == year for year in years}
+    periods["pooled"] = None
+
+    frames = []
+    for label, fraction in (("gross", 0.0), ("net@0.5", COST_FRACTION)):
+        result = run(
+            strategy(eligibility=filters, spread_cost_fraction=fraction,
+                     label=f"oos {label}"),
+            context,
+        )
+        frames.append(
+            metrics.by_period(result, periods).with_columns(pl.lit(label).alias("basis"))
+        )
+        print(f"  {label}: {result.diagnostics['formation_days']} formation days", flush=True)
+    return pl.concat(frames).select(
+        "basis", "period", "days", "mean_daily_pnl", "t_stat_nw", "sharpe_annual", "total_pnl"
+    )
+
+
 def run_attribution(gross_result) -> pl.DataFrame:
     """Split the option P&L into the channels that could have produced it.
 
@@ -569,6 +606,8 @@ def main() -> None:
     print("cost curve")
     cost_df, _ = run_cost_curve(context)
     attribution_df = run_attribution(gross)
+    print("out-of-sample by year")
+    oos_df = run_out_of_sample(context)
 
     headline_df = metrics.compare([gross, headline])
     # Graded gross, not net. Every decile here is held *long*, and buying
@@ -588,6 +627,7 @@ def main() -> None:
     exit_df.write_csv(RESULTS / "exit_rule.csv")
     cost_df.write_csv(RESULTS / "cost_curve.csv")
     attribution_df.write_csv(RESULTS / "attribution.csv")
+    oos_df.write_csv(RESULTS / "out_of_sample.csv")
 
     plot_equity(headline, "01_strategy.png")
     plot_deciles(gross, "02_deciles.png")
@@ -596,6 +636,7 @@ def main() -> None:
     plot_costs(cost_df, exit_df, "05_costs.png")
 
     for name, table in (("strategy", headline_df), ("attribution", attribution_df),
+                        ("out of sample by year", oos_df),
                         ("signal race", race_df),
                         ("earnings partition", earnings_df), ("exit rule", exit_df),
                         ("cost curve", cost_df), ("deciles", decile_df)):

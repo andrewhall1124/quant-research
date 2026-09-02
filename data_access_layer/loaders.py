@@ -126,14 +126,13 @@ def load_underlying(
     `with_actions` adds `split_ratio` and `dividend` for that date from the
     corporate-actions table, so returns can be adjusted at the point of use.
 
-    `with_history` prepends `underlying_history.parquet` (2023-06 to 2024-12),
+    `with_history` prepends `underlying_history.parquet` (2023-06 to 2024-12)
+    and, when `in_universe` is also set, widens the membership table to match
+    so the extra years are not filtered straight back out. It
     which exists so a volatility model can burn in *before* the option sample
     starts instead of eating the first months of it. It is off by default so
     that every study written against the 2025 panel keeps loading exactly what
-    it always did. Note that `in_universe` restricts to point-in-time index
-    membership and the membership table only covers the option window, so the
-    two are mutually exclusive in practice — pass history for model fitting,
-    not for a universe-restricted panel.
+    it always did.
 
     `in_universe` keeps only (symbol, date) pairs that were actually in the
     index that day. Besides being what a universe-based study wants, it drops
@@ -161,8 +160,12 @@ def load_underlying(
     if in_universe:
         # universe.parquet is spelled in Wikipedia tickers; underlying.parquet
         # in ThetaData's, so the membership table has to be mapped across.
+        #
+        # Membership follows the price window: asking for history and then
+        # semi-joining against 2025-only membership silently drops every
+        # pre-2025 row, which is a filter that looks like a data gap.
         members = (
-            load_universe()
+            load_universe(with_history=with_history)
             .with_columns(
                 pl.col("ticker").replace(THETA_STOCK_OVERRIDES).alias("symbol")
             )

@@ -48,11 +48,26 @@ PANEL_COLUMNS = [
 ]
 
 
-def read_greeks(symbol: str) -> pl.LazyFrame:
-    """One symbol's greeks file with the derived columns every layer expects."""
-    path = paths.OPTION_GREEKS_DIR / f"{symbol}.parquet"
+def read_greeks(symbol: str, years: list[int]) -> pl.LazyFrame:
+    """One symbol's greeks across the requested years, with derived columns.
+
+    A symbol can be missing from a year — it may not have been in the index
+    then, or may not have had a listed chain — so absent files are skipped
+    rather than raising. A symbol present in no requested year returns nothing
+    and simply drops out of the panel.
+    """
+    files = [
+        path
+        for path in (
+            paths.option_dir("option_greeks", year) / f"{symbol}.parquet"
+            for year in years
+        )
+        if path.exists()
+    ]
+    if not files:
+        return None
     return (
-        pl.scan_parquet(path)
+        pl.scan_parquet(files)
         .with_columns(
             SESSION.alias("date"),
             pl.col("expiration").str.strptime(pl.Date, "%Y-%m-%d"),
@@ -65,7 +80,7 @@ def read_greeks(symbol: str) -> pl.LazyFrame:
     )
 
 
-def read_open_interest(symbol: str) -> pl.LazyFrame | None:
+def read_open_interest(symbol: str, years: list[int]) -> pl.LazyFrame | None:
     """Open interest for one symbol, keyed to join onto the greeks rows.
 
     The OI print is stamped pre-open (~06:30 ET) and reports the position
@@ -74,11 +89,18 @@ def read_open_interest(symbol: str) -> pl.LazyFrame | None:
     same `date` with no shift — but it is a settled, one-day-stale figure, not
     a live one.
     """
-    path = paths.OPEN_INTEREST_DIR / f"{symbol}.parquet"
-    if not path.exists():
+    files = [
+        path
+        for path in (
+            paths.option_dir("open_interest", year) / f"{symbol}.parquet"
+            for year in years
+        )
+        if path.exists()
+    ]
+    if not files:
         return None
     return (
-        pl.scan_parquet(path)
+        pl.scan_parquet(files)
         .with_columns(
             pl.col("timestamp").dt.date().alias("date"),
             pl.col("expiration").str.strptime(pl.Date, "%Y-%m-%d"),
@@ -87,9 +109,9 @@ def read_open_interest(symbol: str) -> pl.LazyFrame | None:
     )
 
 
-def shape_panel(frame: pl.LazyFrame, symbol: str) -> pl.LazyFrame:
+def shape_panel(frame: pl.LazyFrame, symbol: str, years: list[int]) -> pl.LazyFrame:
     """Attach open interest and narrow to the panel columns."""
-    oi = read_open_interest(symbol)
+    oi = read_open_interest(symbol, years)
     if oi is None:
         frame = frame.with_columns(pl.lit(None, dtype=pl.Int64).alias("open_interest"))
     else:
@@ -104,6 +126,7 @@ def shape_panel(frame: pl.LazyFrame, symbol: str) -> pl.LazyFrame:
 
 def build_selection_panel(
     symbols: list[str] | None = None,
+    years: list[int] | None = None,
     start: date | None = None,
     end: date | None = None,
     min_dte: int = 18,
@@ -118,12 +141,21 @@ def build_selection_panel(
     25-delta strangle needs more moneyness than 8% on a high-vol name — and
     rebuild.
     """
+    if years is None:
+        years = paths.available_years("option_greeks")
     if symbols is None:
-        symbols = paths.available_option_symbols()
+        # The union across years: a name in the index for only part of the
+        # window still belongs in the panel for the part it was there.
+        symbols = sorted(
+            {s for year in years for s in paths.available_option_symbols(year=year)}
+        )
 
     frames = []
     for position, symbol in enumerate(symbols, start=1):
-        frame = read_greeks(symbol).filter(
+        greeks = read_greeks(symbol, years)
+        if greeks is None:
+            continue
+        frame = greeks.filter(
             pl.col("dte").is_between(min_dte, max_dte),
             pl.col("moneyness").abs() <= max_moneyness,
         )
@@ -131,7 +163,7 @@ def build_selection_panel(
             frame = frame.filter(pl.col("date") >= start)
         if end is not None:
             frame = frame.filter(pl.col("date") <= end)
-        frames.append(shape_panel(frame, symbol).collect())
+        frames.append(shape_panel(frame, symbol, years).collect())
         if position % 50 == 0:
             print(f"  selection {position}/{len(symbols)}", flush=True)
 
@@ -144,6 +176,7 @@ def build_selection_panel(
 
 def build_marks_panel(
     contracts_df: pl.DataFrame,
+    years: list[int] | None = None,
     output_path: Path = MARKS_PATH,
 ) -> pl.DataFrame:
     """Daily quotes for exactly the contracts that were selected.
@@ -152,6 +185,8 @@ def build_marks_panel(
     each contract has to be marked over. Only those symbols are read, and only
     those contracts are kept, so this is a targeted fetch rather than a scan.
     """
+    if years is None:
+        years = paths.available_years("option_greeks")
     wanted = contracts_df.select(*KEY, "mark_from", "mark_to")
     frames = []
     symbols = sorted(wanted["symbol"].unique().to_list())
@@ -160,14 +195,17 @@ def build_marks_panel(
         keys_df = wanted.filter(pl.col("symbol") == symbol)
         window_start = keys_df["mark_from"].min()
         window_end = keys_df["mark_to"].max()
+        greeks = read_greeks(symbol, years)
+        if greeks is None:
+            continue
         frame = (
-            read_greeks(symbol)
+            greeks
             .filter(pl.col("date").is_between(window_start, window_end))
             .join(keys_df.lazy(), on=KEY, how="inner")
             .filter(pl.col("date").is_between(pl.col("mark_from"), pl.col("mark_to")))
             .drop("mark_from", "mark_to")
         )
-        frames.append(shape_panel(frame, symbol).collect())
+        frames.append(shape_panel(frame, symbol, years).collect())
         if position % 50 == 0:
             print(f"  marks {position}/{len(symbols)}", flush=True)
 
@@ -210,6 +248,8 @@ def main() -> None:
     parser.add_argument("--max-dte", type=int, default=45)
     parser.add_argument("--max-moneyness", type=float, default=0.08)
     parser.add_argument("--limit", type=int, default=None, help="first N symbols, for a smoke test")
+    parser.add_argument("--years", type=int, nargs="+", default=None,
+                        help="which years to include; default is every year on disk")
     args = parser.parse_args()
 
     if SELECTION_PATH.exists() and not args.refresh:
