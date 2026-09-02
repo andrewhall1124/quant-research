@@ -21,7 +21,7 @@ them means re-deriving each one by hand.
 | `option_greeks_<YYYY>/<SYM>.parquet` | `option_greeks --year YYYY` | `load_option_greeks(years=YYYY)` | — | backfill years |
 | `open_interest/<SYM>.parquet` | `open_interest` | `load_open_interest` | 113,008,800 | 2025, 519 files, 438 MB |
 | `open_interest_<YYYY>/<SYM>.parquet` | `open_interest --year YYYY` | `load_open_interest(years=YYYY)` | — | backfill years |
-| `index_greeks_2025/<ROOT>.parquet` | `option_greeks --symbols` | `load_option_greeks(index=True)` | — | 2025, SPX SPXW XSP VIX |
+| `index_greeks_2025/<ROOT>.parquet` | `option_greeks --symbols` | `load_option_greeks(index=True)` | 9,768,195 | 2025, 4 files, 0.79 GB |
 | `indices.parquet` | `reference` | `load_indices`, `load_index_closes` | 5,531 | 2024-01-02 → 2025-12-31 |
 | `yields.parquet` | `reference` | `load_yields` | 2,000 | 2024-01-02 → 2025-12-31 |
 | `rates.parquet` | `reference` | `load_rates` | 731 | 2024-01-01 → 2025-12-31 |
@@ -218,9 +218,12 @@ Same schema as the single-name chains, pulled by the same pipeline with
 live apart because they are not universe members and a caller listing
 `available_option_symbols` wants one set or the other.
 
+SPX 2.13 M rows, SPXW 4.15 M, XSP 3.22 M, VIX 0.27 M.
+
 `underlying_price` on these rows is the **index level**, which is the only way
 to get SPX or VIX before 2024-01-01 — the index EOD endpoint refuses anything
-earlier on the free index tier.
+earlier on the free index tier. The `VIX` root is what makes that work for the
+volatility complex itself: its `underlying_price` is the VIX level.
 
 **Gotchas**
 
