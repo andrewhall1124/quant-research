@@ -38,6 +38,12 @@ findings index at the bottom.
 - **SPX vs SPXW.** The `SPX` root holds only third-Friday monthlies; every weekly
   and end-of-month expiration is under `SPXW`. Asking `SPX` for a 30-dte chain
   returns empty on most days. Use `SPXW` for anything dte-targeted.
+- **The account is on Options STANDARD** as of 2026-09-02, so greeks, IV and
+  open interest all answer. `option_greeks/` holds all of 2025 (114.4M
+  contract-days, 8.5 GB) and supersedes `options_2025/` — use
+  `load_option_greeks`, whose rows carry `underlying_price` so no spot join is
+  needed. The note below is what the free tier looked like, kept because the
+  probe is still the way to check.
 - **Free tier has no greeks, no IV and no open interest.** Implied vol has to be
   either taken from the VIX complex (free, EOD) or inverted from option mids
   yourself. Server-confirmed: greeks and IV need STANDARD, open interest needs

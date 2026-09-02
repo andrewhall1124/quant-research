@@ -16,6 +16,7 @@ them means re-deriving each one by hand.
 | `universe.parquet` | `universe` | `load_universe` | 126,002 | 2025-01-02 → 2025-12-31 |
 | `underlying_2025.parquet` | `underlying` | `load_underlying` | 128,542 | 2025-01-02 → 2025-12-31 |
 | `options_2025/<SYM>.parquet` | `options` | `load_option_chain` | 114,366,912 | 2025, 519 files, 1.64 GB |
+| `option_greeks/<SYM>.parquet` | `option_greeks` | `load_option_greeks` | 114,365,634 | 2025, 519 files, 8.5 GB |
 | `index_options_2025/<ROOT>.parquet` | `options --symbols` | `load_option_chain(index=True)` | 9,785,614 | 2025, 3 files, 0.16 GB |
 | `indices.parquet` | `reference` | `load_indices`, `load_index_closes` | 5,531 | 2024-01-02 → 2025-12-31 |
 | `yields.parquet` | `reference` | `load_yields` | 2,000 | 2024-01-02 → 2025-12-31 |
@@ -148,6 +149,46 @@ names does not fit in memory. 519 files, 114.4 M contract-days, 1.64 GB.
   duplicates, zero negative prices, zero rows that traded at a zero close.
 - Liquidity decays hard. ATM relative spreads run ~1.9% on NVDA, 3.2% on AAPL,
   18% on JNJ, 40% on NWSA. Any cross-sectional study needs a liquidity filter.
+
+## `option_greeks/<SYMBOL>.parquet` — EOD chains with greeks, IV and spot
+
+A strict superset of `options_2025/`: the same 20 trade and quote columns plus
+23 more. 519 files, 114.4 M contract-days, 8.5 GB — five times the plain
+chains, because the greeks columns are dense float64 across every row while the
+plain OHLC is mostly zeros and compresses hard.
+
+| Extra column | Notes |
+|---|---|
+| `delta` `theta` `vega` `rho` `epsilon` `lambda` `gamma` | 1st order |
+| `vanna` `charm` `vomma` `veta` `vera` | 2nd order |
+| `speed` `zomma` `color` `ultima` | 3rd order |
+| `d1` `d2` `dual_delta` `dual_gamma` | Black-Scholes intermediates |
+| `implied_vol` `iv_error` | `iv_error` is the inversion residual; its median is 0.0 |
+| `underlying_price` `underlying_timestamp` | spot, struck at the same instant as the quote |
+
+**Verified against `options_2025/`** on all 114 M rows: 517 of 519 symbols match
+exactly on row count, trading-day count, and the sum of bid, ask, volume and
+close. `underlying_price` agrees with `underlying_2025.close` to 1e-14.
+
+**Gotchas**
+
+- **The session stamp is `timestamp`, not `created`.** Everything else that
+  overlaps with the plain chain keeps its name.
+- **`moneyness` needs no join here.** `underlying_price` is on the row, which
+  also removes a dependency on the stock-side ticker mapping.
+- **`implied_vol` is `0.0`, not null, where there is no quote** — about 5% of
+  rows. `quoted_only=True` on the loader drops them.
+- **Two symbols have fewer rows than the plain chain, and the greeks store is
+  the *better* one.** ANSS loses its last two sessions (2025-07-17/18) and WBA
+  its last one (2025-08-28); both were acquired in 2025. Every dropped row is
+  100% no-trade and 100% no-quote with `bid = ask = close = 0` — the greeks
+  endpoint declines to price a dead chain where the plain EOD endpoint emits
+  all-zero stubs. Volume checksums are identical, confirming nothing real was
+  lost.
+- Pulling this costs ~250 requests per symbol-year (`expiration=*` is
+  day-at-a-time), so 2.6 hours for 2025 at 4 workers versus 3.5 hours for the
+  whole plain-chain year. Standard accepted 4 workers with zero
+  `RESOURCE_EXHAUSTED` retries.
 
 ## `index_options_2025/<ROOT>.parquet` — EOD index chains
 
@@ -355,6 +396,7 @@ uv run python -m data_pipelines.corporate_actions   # ~30 s
 uv run python -m data_pipelines.earnings            # ~3 min
 uv run python -m data_pipelines.underlying          # 17 min
 uv run python -m data_pipelines.options             # 3.5 hr, resumable
+uv run python -m data_pipelines.option_greeks       # 2.6 hr, resumable
 uv run python -m data_pipelines.options --symbols SPX,SPXW,XSP \
     --output-dir data_store/index_options_2025
 ```

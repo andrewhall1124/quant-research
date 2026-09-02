@@ -361,6 +361,66 @@ def load_option_greeks(
     return frame.sort("date", "expiration", "strike", "right").collect()
 
 
+def load_option_greeks(
+    symbol: str,
+    start: date | None = None,
+    end: date | None = None,
+    rights: str | list[str] | None = None,
+    min_dte: int | None = None,
+    max_dte: int | None = None,
+    max_moneyness: float | None = None,
+    quoted_only: bool = False,
+    columns: list[str] | None = None,
+) -> pl.DataFrame:
+    """One symbol's EOD chain with greeks, IV and the underlying price.
+
+    Supersedes `load_option_chain` for anything needing more than trade and
+    quote fields — the underlying schema is a strict superset. Two differences
+    from that loader worth knowing:
+
+    - The session stamp is `timestamp`, not `created`.
+    - `moneyness` needs no join, because `underlying_price` is on the row and
+      was struck at the same instant as the option quote.
+
+    `quoted_only` drops contracts with no quote, which is also where
+    `implied_vol` comes back as 0.0 rather than null.
+    """
+    path = require(
+        paths.OPTION_GREEKS_DIR / f"{symbol.upper()}.parquet",
+        f"data_pipelines.option_greeks --symbols {symbol.upper()}",
+    )
+    frame = (
+        pl.scan_parquet(path)
+        .with_columns(
+            pl.col("timestamp").dt.date().alias("date"),
+            pl.col("expiration").str.strptime(pl.Date, "%Y-%m-%d").alias("expiration"),
+            ((pl.col("bid") + pl.col("ask")) / 2).alias("mid"),
+        )
+        .with_columns(
+            (pl.col("expiration") - pl.col("date")).dt.total_days().alias("dte"),
+            (pl.col("strike") / pl.col("underlying_price") - 1).alias("moneyness"),
+        )
+    )
+
+    frame = in_window(frame, start, end)
+    if rights is not None:
+        wanted = [rights] if isinstance(rights, str) else list(rights)
+        frame = frame.filter(pl.col("right").is_in([right.upper() for right in wanted]))
+    if min_dte is not None:
+        frame = frame.filter(pl.col("dte") >= min_dte)
+    if max_dte is not None:
+        frame = frame.filter(pl.col("dte") <= max_dte)
+    if max_moneyness is not None:
+        frame = frame.filter(pl.col("moneyness").abs() <= max_moneyness)
+    if quoted_only:
+        frame = frame.filter((pl.col("bid") > 0) & (pl.col("implied_vol") > 0))
+
+    frame = frame.sort("date", "expiration", "strike", "right")
+    if columns is not None:
+        frame = frame.select(columns)
+    return frame.collect()
+
+
 def spot_series(symbol: str, index: bool = False) -> pl.DataFrame:
     """Daily spot for an option root: index level for roots, stock close otherwise."""
     if index:
