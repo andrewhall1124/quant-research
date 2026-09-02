@@ -1,7 +1,7 @@
 endpoint,allowed,detail
 stock_history_eod,true,1 rows
 option_history_eod,true,2540 rows
-option_history_open_interest,false,needs VALUE
-option_history_greeks_eod,false,needs STANDARD
-option_history_greeks_implied_volatility,false,needs STANDARD
-option_history_greeks_first_order,false,needs STANDARD
+option_history_open_interest,true,2410 rows
+option_history_greeks_eod,true,2540 rows
+option_history_greeks_implied_volatility,true,1078 rows
+option_history_greeks_first_order,true,1078 rows
