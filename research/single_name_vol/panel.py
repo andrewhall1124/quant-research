@@ -164,7 +164,7 @@ def build_panel(symbols: list[str] | None = None, verbose: bool = True) -> pl.Da
     rate_df = dal.load_yields("13w").select("date", pl.col("yield").alias("rate"))
     rates = dict(zip(rate_df["date"].to_list(), rate_df["rate"].to_list()))
 
-    wanted = symbols or paths.available_option_symbols(greeks=True)
+    wanted = symbols or paths.available_option_symbols()
     frames, skipped = [], []
     started = time.time()
     for position, symbol in enumerate(wanted, start=1):

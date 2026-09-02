@@ -87,6 +87,7 @@ class BacktestContext:
     underlying_df: pl.DataFrame
     splits_df: pl.DataFrame
     calendar_df: pl.DataFrame
+    earnings_df: pl.DataFrame
     marks_cache: dict = field(default_factory=dict)
 
 
@@ -140,12 +141,47 @@ def build_context(
     )
     calendar_df = pnl_module.build_calendar(underlying_df["date"].unique().to_list())
 
+    # Earnings distance for every (symbol, date) a structure could select. A
+    # cross-sectional implied-vol sort is known to load on earnings timing, so
+    # this rides along as a column and lets a filter or a signal condition on
+    # it — the same treatment every other eligibility metric gets.
+    # The earnings table is spelled in Wikipedia tickers and the option store
+    # strips the dot (BRK.B -> BRKB, BF.B -> BFB), so a naive join silently
+    # loses those names. Stripping the dot on both sides is enough: it is the
+    # only transformation between the two spellings.
+    earnings_dates_df = dal.load_earnings().with_columns(
+        pl.col("symbol").str.replace_all(r"\.", "").alias("symbol")
+    )
+    keys_df = selection_df.select("symbol", "date").unique()
+    events_df = earnings_dates_df.select(
+        "symbol", pl.col("date").alias("earnings_date")
+    ).unique().sort("symbol", "earnings_date")
+    ordered = keys_df.sort("symbol", "date")
+    forward = ordered.join_asof(
+        events_df, left_on="date", right_on="earnings_date", by="symbol",
+        strategy="forward", check_sortedness=False,
+    ).select("symbol", "date", pl.col("earnings_date").alias("next_earnings"))
+    backward = ordered.join_asof(
+        events_df, left_on="date", right_on="earnings_date", by="symbol",
+        strategy="backward", check_sortedness=False,
+    ).select("symbol", "date", pl.col("earnings_date").alias("previous_earnings"))
+    earnings_df = (
+        keys_df.join(forward, on=["symbol", "date"], how="left")
+        .join(backward, on=["symbol", "date"], how="left")
+        .with_columns(
+            (pl.col("next_earnings") - pl.col("date")).dt.total_days().alias("days_to_earnings"),
+            (pl.col("date") - pl.col("previous_earnings")).dt.total_days().alias("days_since_earnings"),
+        )
+        .select("symbol", "date", "days_to_earnings", "days_since_earnings")
+    )
+
     return BacktestContext(
         selection_df=selection_df,
         forecasts_df=forecasts_df,
         underlying_df=underlying_df,
         splits_df=splits_df,
         calendar_df=calendar_df,
+        earnings_df=earnings_df,
     )
 
 
@@ -187,7 +223,17 @@ def run(config: BacktestConfig, context: BacktestContext) -> BacktestResult:
     diagnostics: dict = {"filters": describe(config.eligibility)}
 
     legs_df = config.structure.select(context.selection_df)
-    positions_df = summarize_positions(legs_df)
+    positions_df = summarize_positions(legs_df).join(
+        context.earnings_df, on=["symbol", "date"], how="left"
+    ).with_columns(
+        # For an option, the question is not "how far away is the
+        # announcement" but "does it happen before this contract expires".
+        # That is the binary that moves implied vol, and it is what makes a
+        # 30-day sort different from a 120-day one: a 30-day window either
+        # contains an earnings date or it does not, while a 120-day window
+        # almost always contains exactly one.
+        (pl.col("days_to_earnings") <= pl.col("dte")).alias("earnings_before_expiry")
+    )
     diagnostics["name_days_selected"] = positions_df.height
 
     scored_df = config.signal.attach(positions_df, context.forecasts_df)

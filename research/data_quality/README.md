@@ -12,9 +12,9 @@ uv run python -m research.data_quality.analysis --skip-store-sweep  # ~40 s
 
 The first run pulls a five-root, two-window sample and caches it under
 `sample/` (6.6 MB, gitignored); later runs read the parquet. The store sweep
-reads all 1.6 GB of `data_store/options_2025/`, which is the slow part.
+reads all 8.5 GB of `data_store/option_greeks/`, which is the slow part.
 
-Needs `underlying_2025.parquet`, `options_2025/`, `universe.parquet` and
+Needs `underlying_2025.parquet`, `option_greeks/`, `universe.parquet` and
 `rates.parquet` (SOFR, for the parity discount factor).
 
 ## Files

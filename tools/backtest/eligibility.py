@@ -102,6 +102,55 @@ class MinPremium:
         return pl.col("premium").abs() >= self.threshold
 
 
+class ExcludeEarningsBeforeExpiry:
+    """Keep only contracts that expire before the next announcement.
+
+    The sharpest version of earnings conditioning for an option: implied vol
+    prices the variance it expects to cover, so an earnings date inside the
+    contract's life is a discrete addition to that variance, not a matter of
+    degree. Excluding those names asks whether the strategy has anything left
+    once it can no longer trade the earnings cycle.
+    """
+
+    def __init__(self):
+        self.name = "no_earnings_in_life"
+
+    def mask(self) -> pl.Expr:
+        return ~pl.col("earnings_before_expiry").fill_null(False)
+
+
+class RequireEarningsBeforeExpiry:
+    """The complement: only contracts whose life contains an announcement.
+
+    Run alongside `ExcludeEarningsBeforeExpiry` it partitions the universe, so
+    the two together say how the P&L splits between the earnings trade and
+    everything else.
+    """
+
+    def __init__(self):
+        self.name = "earnings_in_life"
+
+    def mask(self) -> pl.Expr:
+        return pl.col("earnings_before_expiry").fill_null(False)
+
+
+class ExcludeEarningsWithin:
+    """Drop names announcing within `days` of formation, either side.
+
+    A blunter screen than the expiry test, and the one that matters if the
+    concern is the move itself rather than the variance the contract prices.
+    """
+
+    def __init__(self, days: int):
+        self.days = days
+        self.name = f"earnings_gap>{days}d"
+
+    def mask(self) -> pl.Expr:
+        return (pl.col("days_to_earnings").fill_null(9999) > self.days) & (
+            pl.col("days_since_earnings").fill_null(9999) > self.days
+        )
+
+
 def apply_filters(positions_df: pl.DataFrame, filters: tuple) -> pl.DataFrame:
     if not filters:
         return positions_df

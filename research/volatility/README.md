@@ -10,7 +10,7 @@ uv run python -m research.volatility.analysis    # ~1 min, rewrites figures/ and
 ```
 
 Needs `indices.parquet` (SPX + VIX complex) and, for the validation figure,
-`index_options_2025/SPXW.parquet` and `yields.parquet`. Rebuild any of them with
+`index_greeks_2025/SPXW.parquet` and `yields.parquet`. Rebuild any of them with
 `uv run python -m data_pipelines.reference` / `... .options --symbols SPXW`.
 
 ## Files

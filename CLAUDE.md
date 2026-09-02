@@ -46,10 +46,30 @@ findings index at the bottom.
   and end-of-month expiration is under `SPXW`. Asking `SPX` for a 30-dte chain
   returns empty on most days. Use `SPXW` for anything dte-targeted.
 - **The account is on Options STANDARD** as of 2026-09-02, so greeks, IV and
-  open interest all answer. `option_greeks/` holds all of 2025 (114.4M
-  contract-days, 8.5 GB) and supersedes `options_2025/` — use
-  `load_option_greeks`, whose rows carry `underlying_price` so no spot join is
-  needed. The note below is what the free tier looked like, kept because the
+  open interest all answer, and the option history reaches 2016-01-01.
+  `option_greeks/` holds all of 2025 (114.4M contract-days, 8.5 GB). The
+  price-only pull it superseded (`data_pipelines/options.py`, `options_2025/`,
+  `load_option_chain`) is **deleted**: the greeks endpoint returns a strict
+  superset of its columns, index roots included, so it had nothing left to add.
+  Verified before removing it — the rebuilt ATM IV was identical to the last
+  bit on all 250 days for AAPL, KO and NEM, and all 247 for SPXW.
+- **Stocks and indices are still FREE tier, and options are not.** Stock EOD
+  refuses anything before 2023-06-01 and index EOD before 2024-01-01, while
+  option history reaches 2016. So a backfill is an *option* backfill, and
+  anything joining a stock close or an index level cannot follow it back. What
+  rescues this is `underlying_price` on every greeks row: it is spot, struck
+  with the quote, at every date the option feed covers — and on the `SPXW` and
+  `VIX` roots it is the index level the index endpoint will not serve.
+- **The universe carries today's ticker at every historical date**, because
+  Wikipedia's constituent table only knows the current symbol. META in 2016,
+  ELV in 2019, RTX in 2018 and PARA in 2021 all return NoDataFound, which is
+  safe — no file is written. `FI` in 2019 does not: it answers with a $5.92
+  company while Fiserv traded as FISV at $82.68. Run
+  `data_pipelines.symbology` after any backfill year and drop what it calls
+  `wrong_instrument`; it costs no requests, comparing stored `underlying_price`
+  to Yahoo. It cannot arbitrate a delisted name — Yahoo drops those — so those
+  come back `thin_overlap`, meaning unverified rather than clean.
+  The note below is what the free tier looked like, kept because the
   probe is still the way to check.
 - **Free tier has no greeks, no IV and no open interest.** Implied vol has to be
   either taken from the VIX complex (free, EOD) or inverted from option mids

@@ -42,10 +42,8 @@ EARNINGS = DATA_STORE / "earnings.parquet"
 UNIVERSE_HISTORY = DATA_STORE / "universe_history.parquet"
 
 # One parquet per symbol; too large to keep in a single file.
-OPTIONS_DIR = DATA_STORE / "options_2025"
 OPEN_INTEREST_DIR = DATA_STORE / "open_interest"
 OPTION_GREEKS_DIR = DATA_STORE / "option_greeks"
-INDEX_OPTIONS_DIR = DATA_STORE / "index_options_2025"
 
 # The year the store was first built for. Every per-symbol option directory is
 # year-stamped so a backfill year can never be confused with — or silently
@@ -55,10 +53,8 @@ INDEX_OPTIONS_DIR = DATA_STORE / "index_options_2025"
 SAMPLE_YEAR = 2025
 
 OPTION_DIR_PREFIXES = {
-    "options": "options",
     "open_interest": "open_interest",
     "option_greeks": "option_greeks",
-    "index_options": "index_options",
     "index_greeks": "index_greeks",
 }
 UNSTAMPED_2025_DIRS = {"open_interest", "option_greeks"}
@@ -84,8 +80,8 @@ def available_years(dataset: str) -> list[int]:
         if not candidate.is_dir():
             continue
         suffix = candidate.name[len(prefix) + 1 :]
-        # `options_2025` and `index_options_2025` are year-stamped; the glob
-        # also catches `option_greeks_2024`, but not a non-year suffix.
+        # Only a numeric suffix is a year: this must not treat a stray
+        # `option_greeks_backup` as 2025's neighbour.
         if suffix.isdigit():
             years.append(int(suffix))
     if dataset in UNSTAMPED_2025_DIRS and (DATA_STORE / prefix).is_dir():
@@ -106,45 +102,33 @@ DATASETS = {
     "ticker_check": TICKER_CHECK,
     "symbology_check": SYMBOLOGY_CHECK,
     "earnings": EARNINGS,
-    "options": OPTIONS_DIR,
     "open_interest": OPEN_INTEREST_DIR,
     "option_greeks": OPTION_GREEKS_DIR,
-    "index_options": INDEX_OPTIONS_DIR,
 }
 
 
-def option_dataset_name(index: bool = False, greeks: bool = False) -> str:
-    """The per-symbol dataset an (index, greeks) pair lives in.
+def option_dataset_name(index: bool = False) -> str:
+    """The per-symbol chain dataset for constituents, or for index roots.
 
     Index roots stay in their own directory rather than mixing into the
     constituent chains: they are not universe members, and a caller listing
     `available_option_symbols` wants one or the other, never both.
     """
-    if greeks:
-        return "index_greeks" if index else "option_greeks"
-    return "index_options" if index else "options"
+    return "index_greeks" if index else "option_greeks"
 
 
 def option_chain_path(
-    symbol: str,
-    index: bool = False,
-    greeks: bool = False,
-    year: int = SAMPLE_YEAR,
+    symbol: str, index: bool = False, year: int = SAMPLE_YEAR
 ) -> Path:
-    """Path to one symbol's chain for one year.
-
-    Index roots live in their own directory, and the greeks pull is a third
-    directory rather than extra columns on the first: it is a separate,
-    slower endpoint and is not expected to cover the same symbols.
-    """
-    directory = option_dir(option_dataset_name(index, greeks), year)
+    """Path to one symbol's chain for one year."""
+    directory = option_dir(option_dataset_name(index), year)
     return directory / f"{symbol.upper()}.parquet"
 
 
 def available_option_symbols(
-    index: bool = False, greeks: bool = False, year: int = SAMPLE_YEAR
+    index: bool = False, year: int = SAMPLE_YEAR
 ) -> list[str]:
-    directory = option_dir(option_dataset_name(index, greeks), year)
+    directory = option_dir(option_dataset_name(index), year)
     if not directory.exists():
         return []
     return sorted(path.stem for path in directory.glob("*.parquet"))

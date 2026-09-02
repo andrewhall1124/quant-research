@@ -25,25 +25,38 @@ Run as modules from the repo root, so imports resolve:
 ```bash
 uv run python -m data_pipelines.universe      # point-in-time S&P 500 membership
 uv run python -m data_pipelines.underlying    # EOD stock prices for that universe
-uv run python -m data_pipelines.options       # EOD option chains for that universe
+uv run python -m data_pipelines.option_greeks  # EOD option chains with greeks, IV and spot
+uv run python -m data_pipelines.open_interest  # EOD open interest for the same chains
 uv run python -m data_pipelines.reference     # indices, VIX complex, yields, SOFR
 uv run python -m data_pipelines.corporate_actions  # splits + dividends (Yahoo), and a vendor cross-check
 uv run python -m data_pipelines.earnings      # earnings announcement dates + session (Yahoo)
-uv run python -m data_pipelines.options --symbols SPX,SPXW,XSP \
-    --output-dir data_store/index_options_2025
+uv run python -m data_pipelines.option_greeks --symbols SPX,SPXW,XSP,VIX \
+    --output-dir data_store/index_greeks_2025
 ```
 
-`underlying` and `options` take `--start`, `--end`, `--workers`, and `--limit`
-(sample the first N tickers, for benchmarking). `options --symbols` takes a
+**Only one pull may run at a time.** ThetaData issues one session per account,
+so a second pipeline process — or a throwaway probe script in another shell —
+invalidates the first, and the loser gets UNAUTHENTICATED on every request.
+Concurrency belongs in `--workers`, which shares one session across threads.
+
+The per-symbol pulls take `--start`, `--end`, `--workers`, `--limit` (sample
+the first N tickers, for benchmarking) and `--year`, which sets the window and
+the year-stamped output directory in one flag. `--symbols` takes a
 comma-separated list of roots and bypasses the universe file, which is how the
-index chains get pulled — they are not constituents.
+index chains get pulled — they are not constituents. An explicit
+`--output-dir` beats `--year`, which is what keeps index roots out of the
+constituent directory.
 
 `universe` reconstructs membership by walking Wikipedia's current constituent
-list backwards through the changes table. The trading calendar comes from SPY's
-EOD history, because ThetaData's calendar endpoint needs a paid tier.
+list backwards through the changes table; `--history` writes the 2016-2024
+reconstruction to its own file. The trading calendar comes from ThetaData's
+`calendar_year`, which is free at every tier and reaches 2016.
 
-`options` writes one parquet per symbol and skips symbols already on disk, so
-it is resumable and never holds a full year of chains in memory.
+Each per-symbol pull writes one parquet per symbol and skips symbols already on
+disk, so it is resumable and never holds a full year of chains in memory. For a
+backfill year, run `data_pipelines.symbology` afterwards: the universe carries
+today's ticker at every historical date, and a rename can file another
+company's chain under the modern name.
 
 Every dataset is documented in
 **[`data_store/README.md`](data_store/README.md)** — schema, coverage, owning
@@ -59,15 +72,19 @@ dal.describe_store()                       # what is on disk, and what is missin
 prices_df = dal.load_underlying(with_actions=True, in_universe=True)
 returns_df = prices_df.with_columns(dal.split_adjusted_return().over("symbol"))
 levels_df = dal.load_index_closes(["SPX", "VIX", "VIX9D", "VIX3M"])   # wide
-chain_df  = dal.load_option_chain("SPXW", index=True, min_dte=25, max_dte=35,
-                                  max_moneyness=0.05, with_spot=True)
+chain_df  = dal.load_option_greeks("SPXW", index=True, min_dte=25, max_dte=35,
+                                   max_moneyness=0.05)
+oi_df     = dal.load_open_interest("AAPL", min_open_interest=500)
 ```
 
 Loaders return eager polars DataFrames with a `date` column of dtype `Date`,
-whatever the raw file carries. `load_option_chain` adds `dte`, `mid`, and
-optionally `spot` / `moneyness`, and filters lazily — asking for one symbol out
-of the 1.6 GB chain directory reads only that file. A missing dataset raises
-`MissingDataset` naming the pipeline command that would create it.
+whatever the raw file carries. `load_option_greeks` adds `dte`, `mid` and
+`moneyness` — the last needs no join, because `underlying_price` rides on every
+row, struck at the same instant as the quote — and filters lazily, so asking
+for one symbol out of the 8.5 GB chain directory reads only that file. It
+defaults to the 2025 sample; pass `years=None` for every backfilled year on
+disk. A missing dataset raises `MissingDataset` naming the pipeline command
+that would create it.
 
 ## Research
 

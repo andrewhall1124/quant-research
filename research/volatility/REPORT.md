@@ -374,7 +374,7 @@ Not established:
   most of the dispersion. Rerunning across 2015-2025 would be the obvious next
   step and needs a paid ThetaData tier (or another vendor) for the history.
 - **Anything about the equity cross-section.** SPX only. The single-name chains
-  in `data_store/options_2025/` would support the same test on 500 names, where
+  in `data_store/option_greeks/` would support the same test on 500 names, where
   the IV measure has to be built from chains rather than a published index.
 
 One methodological note for anything built on this. The scoring here is

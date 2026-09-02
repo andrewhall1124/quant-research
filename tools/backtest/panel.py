@@ -119,7 +119,7 @@ def build_selection_panel(
     rebuild.
     """
     if symbols is None:
-        symbols = paths.available_option_symbols(greeks=True)
+        symbols = paths.available_option_symbols()
 
     frames = []
     for position, symbol in enumerate(symbols, start=1):
@@ -216,7 +216,7 @@ def main() -> None:
         print(f"{SELECTION_PATH} exists; pass --refresh to rebuild")
         return
 
-    symbols = paths.available_option_symbols(greeks=True)
+    symbols = paths.available_option_symbols()
     if args.limit:
         symbols = symbols[: args.limit]
     build_selection_panel(

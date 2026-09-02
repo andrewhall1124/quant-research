@@ -128,7 +128,7 @@ def open_interest_bucket() -> pl.Expr:
 
 
 def main() -> None:
-    symbols = paths.available_option_symbols(greeks=True)[::SAMPLE_STRIDE][:SAMPLE_SIZE]
+    symbols = paths.available_option_symbols()[::SAMPLE_STRIDE][:SAMPLE_SIZE]
 
     plain = add_cost_metrics(
         pl.concat([load_atm(s, False) for s in symbols], how="vertical_relaxed")

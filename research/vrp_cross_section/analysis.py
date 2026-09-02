@@ -48,10 +48,13 @@ import seaborn as sns
 from tools.backtest import BacktestConfig, build_context, run
 from tools.backtest import metrics
 from tools.backtest.eligibility import (
+    ExcludeEarningsBeforeExpiry,
+    ExcludeEarningsWithin,
     MaxRelativeSpread,
     MinOpenInterest,
     MinStructureVega,
     MinUnderlyingPrice,
+    RequireEarningsBeforeExpiry,
 )
 from tools.backtest.signals import IvLevelSignal, IvZScoreSignal, VrpSignal
 from tools.backtest.structures import AtmStraddle
@@ -263,6 +266,51 @@ def run_turnover_grid(context) -> tuple[pl.DataFrame, list]:
                 print(f"  {config.label}: sharpe "
                       f"{metrics.summarize(results[-1].daily_pnl, holding)['sharpe_annual']:.2f}",
                       flush=True)
+    return metrics.compare(results), results
+
+
+def run_earnings_grid(context) -> tuple[pl.DataFrame, list]:
+    """Split the strategy on whether an announcement falls inside the contract.
+
+    §5 found the gross signal roughly doubling with tenor, and the earnings
+    profile says why. At 30 days the fraction of contracts with an
+    announcement before expiry runs from 0.07 in the cheapest decile to 0.75
+    in the richest — the sort is very largely an earnings-in-the-window sort.
+    At 120 days that fraction is 0.99 in every decile, so the binary is
+    constant and cannot drive anything.
+
+    This partitions the 30-day universe into the two halves and runs each as
+    its own strategy, which is the direct test: if the P&L is an earnings
+    trade, the no-earnings half has nothing left. The 120-day version is run
+    for contrast, where the partition is degenerate by construction.
+    """
+    results = []
+    cases = [
+        (30, 7, 25, (), "30d all"),
+        (30, 7, 25, (RequireEarningsBeforeExpiry(),), "30d earnings-in-life"),
+        (30, 7, 25, (ExcludeEarningsBeforeExpiry(),), "30d no-earnings-in-life"),
+        (30, 7, 25, (ExcludeEarningsWithin(10),), "30d no-earnings-within-10d"),
+        (120, 20, 100, (), "120d all"),
+        (120, 20, 100, (ExcludeEarningsWithin(10),), "120d no-earnings-within-10d"),
+    ]
+    for target_dte, dte_error, floor, extra, label in cases:
+        structure = AtmStraddle(target_dte=target_dte, max_dte_error=dte_error, max_moneyness=0.05)
+        for fraction in (0.0, NET_COST_FRACTION):
+            config = baseline_config(
+                structure=structure,
+                eligibility=BASE_FILTERS + (MinOpenInterest(floor),) + extra,
+                spread_cost_fraction=fraction,
+                label=f"{label} cost={fraction:g}",
+            )
+            try:
+                results.append(run(config, context))
+            except ValueError as error:
+                print(f"  {config.label}: skipped ({error})", flush=True)
+                continue
+            stats = metrics.summarize(results[-1].daily_pnl, config.holding_days)
+            print(f"  {config.label}: sharpe {stats['sharpe_annual']:6.2f}"
+                  f" t {stats['t_stat_nw']:5.2f}"
+                  f" days {results[-1].diagnostics['formation_days']}", flush=True)
     return metrics.compare(results), results
 
 
@@ -481,6 +529,8 @@ def main() -> None:
     tenor_df, tenor_results = run_tenor_grid(context)
     print("turnover grid (120-day contracts held longer)")
     turnover_df, turnover_results = run_turnover_grid(context)
+    print("earnings partition")
+    earnings_df, earnings_results = run_earnings_grid(context)
 
     decile_df = metrics.decile_table(baseline.decile_pnl, HORIZON)
 
@@ -490,6 +540,7 @@ def main() -> None:
     cost_df.write_csv(RESULTS / "cost_grid.csv")
     tenor_df.write_csv(RESULTS / "tenor_grid.csv")
     turnover_df.write_csv(RESULTS / "turnover_grid.csv")
+    earnings_df.write_csv(RESULTS / "earnings_grid.csv")
     decile_df.write_csv(RESULTS / "decile_monotonicity.csv")
     baseline.daily_pnl.write_csv(RESULTS / "baseline_daily_pnl.csv")
 
@@ -518,6 +569,9 @@ def main() -> None:
     print("\n=== turnover: 120-day contracts held longer ===")
     print(turnover_df.select("label", "formation_days", "mean_daily_pnl", "t_stat_nw",
                              "sharpe_annual", "total_pnl", "break_even_spread_frac"))
+    print("\n=== earnings partition ===")
+    print(earnings_df.select("label", "formation_days", "names_per_side", "mean_daily_pnl",
+                             "t_stat_nw", "sharpe_annual", "break_even_spread_frac"))
     print("\n=== decile monotonicity ===")
     print(decile_df)
 

@@ -14,23 +14,38 @@ them means re-deriving each one by hand.
 | File | Pipeline | Loader | Rows | Coverage |
 |---|---|---|---|---|
 | `universe.parquet` | `universe` | `load_universe` | 126,002 | 2025-01-02 → 2025-12-31 |
+| `universe_history.parquet` | `universe --history` | `load_universe(with_history=True)` | 1,144,573 | 2016-01-04 → 2024-12-31 |
 | `underlying_2025.parquet` | `underlying` | `load_underlying` | 128,542 | 2025-01-02 → 2025-12-31 |
 | `underlying_history.parquet` | `underlying --start 2023-06-01` | `load_underlying(with_history=True)` | 203,496 | 2023-06-01 → 2024-12-31 |
-| `options_2025/<SYM>.parquet` | `options` | `load_option_chain` | 114,366,912 | 2025, 519 files, 1.64 GB |
 | `option_greeks/<SYM>.parquet` | `option_greeks` | `load_option_greeks` | 114,365,634 | 2025, 519 files, 8.5 GB |
-| `open_interest/<SYM>.parquet` | `open_interest` | joined in `tools/backtest/panel.py` | 113,008,800 | 2025, 519 files, 438 MB |
-| `index_options_2025/<ROOT>.parquet` | `options --symbols` | `load_option_chain(index=True)` | 9,785,614 | 2025, 3 files, 0.16 GB |
+| `option_greeks_<YYYY>/<SYM>.parquet` | `option_greeks --year YYYY` | `load_option_greeks(years=YYYY)` | — | backfill years |
+| `open_interest/<SYM>.parquet` | `open_interest` | `load_open_interest` | 113,008,800 | 2025, 519 files, 438 MB |
+| `open_interest_<YYYY>/<SYM>.parquet` | `open_interest --year YYYY` | `load_open_interest(years=YYYY)` | — | backfill years |
+| `index_greeks_2025/<ROOT>.parquet` | `option_greeks --symbols` | `load_option_greeks(index=True)` | — | 2025, SPX SPXW XSP VIX |
 | `indices.parquet` | `reference` | `load_indices`, `load_index_closes` | 5,531 | 2024-01-02 → 2025-12-31 |
 | `yields.parquet` | `reference` | `load_yields` | 2,000 | 2024-01-02 → 2025-12-31 |
 | `rates.parquet` | `reference` | `load_rates` | 731 | 2024-01-01 → 2025-12-31 |
 | `fred_rates.parquet` | `reference` | `load_fred_rates` | 2,430 | 2024-12-02 → 2025-12-31 |
-| `corporate_actions.parquet` | `corporate_actions` | `load_corporate_actions` | 2,728 | 2025-01-02 → present |
+| `corporate_actions.parquet` | `corporate_actions` | `load_corporate_actions` | 16,584 | 2016-01-04 → present |
 | `ticker_check.parquet` | `corporate_actions` | `load_ticker_check`, `trusted_symbols` | 523 | one row per universe ticker |
+| `symbology_check.parquet` | `symbology --years …` | read directly | — | one row per symbol-year pulled |
 | `earnings.parquet` | `earnings` | `load_earnings`, `with_earnings_distance` | 45,060 | 1999-08-02 → 2026-12-09 |
 
 Year-stamped names mark the expensive per-symbol pulls, pinned to the window
 they were pulled for. Reference tables are cheap to re-pull in full and carry
-no year.
+no year. `option_greeks/` and `open_interest/` are 2025 under their bare names,
+a convention that predates the stamping; every other year is
+`<dataset>_<YYYY>/`. `paths.option_dir(dataset, year)` resolves either, and
+`paths.available_years(dataset)` says what is on disk.
+
+Loaders default to the 2025 sample rather than to everything on disk, so
+landing a backfill year never silently changes what a study that asked for no
+window already loads. Pass `years=None` for the full history.
+
+**Only one pull may run at a time.** ThetaData issues one session per account,
+so two pipeline processes fight over it and the loser gets UNAUTHENTICATED on
+every request. Chain backfill years sequentially; put concurrency in
+`--workers`, which shares one session across threads.
 
 ## `open_interest/`
 
@@ -145,50 +160,15 @@ ThetaData's calendar endpoint needs a paid tier.
   after-hours movement, so they differ by ~14 bp at the median. That is
   expected, not an error.
 
-## `options_2025/<SYMBOL>.parquet` — EOD option chains
-
-One file per root, because a full year of every listed expiration across 500
-names does not fit in memory. 519 files, 114.4 M contract-days, 1.64 GB.
-
-| Column | Type | Notes |
-|---|---|---|
-| `symbol` | String | option root, dots stripped — `BRKB`, `BFB` |
-| `expiration` | **String** | `YYYY-MM-DD`; the loader parses it to Date |
-| `strike` | Float64 | |
-| `right` | String | `"CALL"` / `"PUT"` — spelled out, uppercase |
-| `created` | Datetime(ms, America/New_York) | 17:15–17:26 ET report stamp |
-| `last_trade` | Datetime(ms, America/New_York) | midnight when the contract never traded |
-| `open` `high` `low` `close` | Float64 | **0.0, not null, when volume is 0** |
-| `volume` `count` | Int64 | |
-| `bid` `ask` `bid_size` `ask_size` + exchange/condition codes | — | NBBO at report time |
-
-`load_option_chain` adds `date`, `dte`, `mid`, and optionally `spot` and
-`moneyness`, and filters lazily — asking for one symbol reads only that file.
-
-**Gotchas**
-
-- **53% of contract-days never trade, and their OHLC is `0.0`.** Anything
-  averaging or differencing `close` silently treats half the chain as a
-  zero-priced option. Filter on `volume > 0`, or use `mid`.
-- **There is no underlying price in the chain.** Join it from
-  `underlying_2025.parquet`, which `with_spot=True` does.
-- **Split-adjusted contracts have no flag.** After ORLY's 15:1, 62 of its 106
-  strikes were adjusted contracts (45.33, 46.67 = 680/15) with non-standard
-  deliverables, interleaved with the new standard grid for the remaining life
-  of every pre-split expiration — months, not one day. Nothing in the schema
-  distinguishes them; filter by strike-grid regularity or exclude the root.
-- Defect rates over the full 114 M rows, for calibration: 8,723 crossed quotes
-  (0.008%), 4,275 rows with no quote at all (0.004%), zero nulls, zero
-  duplicates, zero negative prices, zero rows that traded at a zero close.
-- Liquidity decays hard. ATM relative spreads run ~1.9% on NVDA, 3.2% on AAPL,
-  18% on JNJ, 40% on NWSA. Any cross-sectional study needs a liquidity filter.
-
 ## `option_greeks/<SYMBOL>.parquet` — EOD chains with greeks, IV and spot
 
-A strict superset of `options_2025/`: the same 20 trade and quote columns plus
-23 more. 519 files, 114.4 M contract-days, 8.5 GB — five times the plain
-chains, because the greeks columns are dense float64 across every row while the
-plain OHLC is mostly zeros and compresses hard.
+The only option chain store. 43 columns: 20 trade and quote fields plus 23
+more. 519 files, 114.4 M contract-days, 8.5 GB for 2025.
+
+One file per root, because a full year of every listed expiration across 500
+names does not fit in memory. `symbol` is the option root with dots stripped
+(`BRKB`, `BFB`); `expiration` is a **String** the loader parses to Date;
+`right` is `"CALL"` / `"PUT"`, spelled out and uppercase.
 
 | Extra column | Notes |
 |---|---|
@@ -199,19 +179,27 @@ plain OHLC is mostly zeros and compresses hard.
 | `implied_vol` `iv_error` | `iv_error` is the inversion residual; its median is 0.0 |
 | `underlying_price` `underlying_timestamp` | spot, struck at the same instant as the quote |
 
-**Verified against `options_2025/`** on all 114 M rows: 517 of 519 symbols match
-exactly on row count, trading-day count, and the sum of bid, ask, volume and
-close. `underlying_price` agrees with `underlying_2025.close` to 1e-14.
+**Verified against the price-only pull this replaced**, on all 114 M rows,
+before that pull was deleted: 517 of 519 symbols matched exactly on row count,
+trading-day count, and the sum of bid, ask, volume and close.
+`underlying_price` agrees with `underlying_2025.close` to 1e-14. The two
+studies that read the old store rebuild their ATM IV series identically to the
+last bit — 250 days for AAPL, KO and NEM, 247 for SPXW.
 
 **Gotchas**
 
-- **The session stamp is `timestamp`, not `created`.** Everything else that
-  overlaps with the plain chain keeps its name.
-- **`moneyness` needs no join here.** `underlying_price` is on the row, which
-  also removes a dependency on the stock-side ticker mapping.
+- **The session stamp is `underlying_timestamp`**, the stamp on the spot print
+  the greeks were struck against, so it is defined even for a contract that
+  never traded. `timestamp` is the contract's own last trade.
+- **53% of contract-days never trade, and their OHLC is `0.0`, not null.**
+  Anything averaging or differencing `close` silently treats half the chain as
+  a zero-priced option. Filter on `volume > 0`, or use `mid`.
+- **`moneyness` needs no join.** `underlying_price` is on the row, which also
+  removes a dependency on the stock-side ticker mapping — and is the only spot
+  available before 2023-06-01, where the free stock tier stops.
 - **`implied_vol` is `0.0`, not null, where there is no quote** — about 5% of
   rows. `quoted_only=True` on the loader drops them.
-- **Two symbols have fewer rows than the plain chain, and the greeks store is
+- **Two symbols had fewer rows than the plain chain, and the greeks store is
   the *better* one.** ANSS loses its last two sessions (2025-07-17/18) and WBA
   its last one (2025-08-28); both were acquired in 2025. Every dropped row is
   100% no-trade and 100% no-quote with `bid = ask = close = 0` — the greeks
@@ -219,13 +207,20 @@ close. `underlying_price` agrees with `underlying_2025.close` to 1e-14.
   all-zero stubs. Volume checksums are identical, confirming nothing real was
   lost.
 - Pulling this costs ~250 requests per symbol-year (`expiration=*` is
-  day-at-a-time), so 2.6 hours for 2025 at 4 workers versus 3.5 hours for the
-  whole plain-chain year. Standard accepted 4 workers with zero
-  `RESOURCE_EXHAUSTED` retries.
+  day-at-a-time), so 2.6 hours for 2025 at 4 workers. Standard accepted 4
+  workers with zero `RESOURCE_EXHAUSTED` retries. Earlier years are smaller:
+  AAPL's 2017 chain is 0.55x the size of its 2025 one, 2022 is 0.81x.
 
-## `index_options_2025/<ROOT>.parquet` — EOD index chains
+## `index_greeks_2025/<ROOT>.parquet` — EOD index chains
 
-Same schema as the single-name chains. SPX 2.20 M rows, SPXW 4.27 M, XSP 3.32 M.
+Same schema as the single-name chains, pulled by the same pipeline with
+`--symbols SPX,SPXW,XSP,VIX --output-dir data_store/index_greeks_2025`. They
+live apart because they are not universe members and a caller listing
+`available_option_symbols` wants one set or the other.
+
+`underlying_price` on these rows is the **index level**, which is the only way
+to get SPX or VIX before 2024-01-01 — the index EOD endpoint refuses anything
+earlier on the free index tier.
 
 **Gotchas**
 
@@ -428,10 +423,10 @@ uv run python -m data_pipelines.reference           # ~1 min
 uv run python -m data_pipelines.corporate_actions   # ~30 s
 uv run python -m data_pipelines.earnings            # ~3 min
 uv run python -m data_pipelines.underlying          # 17 min
-uv run python -m data_pipelines.options             # 3.5 hr, resumable
 uv run python -m data_pipelines.option_greeks       # 2.6 hr, resumable
-uv run python -m data_pipelines.options --symbols SPX,SPXW,XSP \
-    --output-dir data_store/index_options_2025
+uv run python -m data_pipelines.option_greeks       # 2.6 hr, resumable
+uv run python -m data_pipelines.option_greeks --symbols SPX,SPXW,XSP,VIX \
+    --output-dir data_store/index_greeks_2025
 ```
 
 Timings are free tier at 2 workers. `options` skips symbols already on disk, so

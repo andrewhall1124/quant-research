@@ -14,7 +14,7 @@ The panel is cached because building it inverts an option chain for every name
 and day in 2025. Build it in one go if the machine is free; `build_panel` also
 takes a symbol list, so a slow environment can run it in a few slices and
 concatenate the parts. `analysis.py` reads the cache and never rebuilds it; pass
-`--refresh` when the underlying data changes. Needs `options_2025/`,
+`--refresh` when the underlying data changes. Needs `option_greeks/`,
 `underlying_2025.parquet`, `yields.parquet` and `indices.parquet`.
 
 ## Files

@@ -326,67 +326,6 @@ def load_fred_rates(
     return in_window(only_symbols(frame, series, "series"), start, end).sort("date", "series").collect()
 
 
-def load_option_chain(
-    symbol: str,
-    index: bool = False,
-    start: date | None = None,
-    end: date | None = None,
-    rights: str | list[str] | None = None,
-    min_dte: int | None = None,
-    max_dte: int | None = None,
-    with_spot: bool = False,
-    max_moneyness: float | None = None,
-    columns: list[str] | None = None,
-    years: int | list[int] | None = paths.SAMPLE_YEAR,
-) -> pl.DataFrame:
-    """One symbol's EOD chain, with derived `date`, `dte` and `mid` columns.
-
-    `with_spot` joins the underlying close and adds `moneyness`
-    (strike / spot - 1); `max_moneyness` filters on its absolute value and
-    implies `with_spot`. Set `index=True` for index roots (SPX, SPXW, XSP).
-
-    `years` selects which backfill years to read; it defaults to the 2025
-    sample, so a study written before the backfill loads exactly what it
-    always did. Pass `years=None` for every year on disk. Note that
-    `with_spot` needs a stock tier that only reaches 2023-06-01, so it cannot
-    be satisfied for the deeper years.
-    """
-    chain_paths = resolve_option_paths(
-        symbol, paths.option_dataset_name(index, False), years,
-        f"data_pipelines.options --symbols {symbol.upper()}",
-    )
-    frame = (
-        pl.scan_parquet(chain_paths)
-        .with_columns(
-            pl.col("created").dt.date().alias("date"),
-            pl.col("expiration").str.strptime(pl.Date, "%Y-%m-%d").alias("expiration"),
-            ((pl.col("bid") + pl.col("ask")) / 2).alias("mid"),
-        )
-        .with_columns((pl.col("expiration") - pl.col("date")).dt.total_days().alias("dte"))
-    )
-
-    frame = in_window(frame, start, end)
-    if rights is not None:
-        wanted = [rights] if isinstance(rights, str) else list(rights)
-        frame = frame.filter(pl.col("right").is_in([right.upper() for right in wanted]))
-    if min_dte is not None:
-        frame = frame.filter(pl.col("dte") >= min_dte)
-    if max_dte is not None:
-        frame = frame.filter(pl.col("dte") <= max_dte)
-
-    if with_spot or max_moneyness is not None:
-        frame = frame.join(spot_series(symbol, index).lazy(), on="date", how="inner")
-        frame = frame.with_columns((pl.col("strike") / pl.col("spot") - 1).alias("moneyness"))
-        if max_moneyness is not None:
-            frame = frame.filter(pl.col("moneyness").abs() <= max_moneyness)
-
-    # Sort before narrowing: the sort keys are not necessarily in `columns`.
-    frame = frame.sort("date", "expiration", "strike", "right")
-    if columns is not None:
-        frame = frame.select(columns)
-    return frame.collect()
-
-
 def load_option_greeks(
     symbol: str,
     start: date | None = None,
@@ -403,9 +342,8 @@ def load_option_greeks(
 ) -> pl.DataFrame:
     """One symbol's EOD chain with greeks, IV and the underlying price.
 
-    Supersedes `load_option_chain` for anything needing more than trade and
-    quote fields — the underlying schema is a strict superset. Three
-    differences from that loader worth knowing:
+    This is the only option loader: the price-only EOD pull it replaced
+    returned a strict subset of these columns. Three things to know:
 
     - The session stamp is `underlying_timestamp`, not `created`. It is the
       stamp on the spot print the greeks were struck against, so it is defined
@@ -423,10 +361,10 @@ def load_option_greeks(
 
     `years` defaults to the 2025 sample; pass `years=None` for every
     backfilled year on disk. Because `underlying_price` rides on the row, this
-    loader — unlike `load_option_chain` — needs no stock tier and so is usable
-    across the whole option history.
+    loader needs no stock tier at all, and so is usable across the whole
+    option history — which the free stock tier, stopping at 2023-06-01, is not.
     """
-    dataset = paths.option_dataset_name(index, greeks=True)
+    dataset = paths.option_dataset_name(index)
     greek_paths = resolve_option_paths(
         symbol, dataset, years,
         f"data_pipelines.option_greeks --symbols {symbol.upper()}"

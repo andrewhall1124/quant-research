@@ -84,7 +84,7 @@ def compare_measures(panel_df: pl.DataFrame) -> pl.DataFrame:
         .select("symbol", "date", pl.col("IV").alias("study_iv"))
         .unique(["symbol", "date"])
     )
-    available = set(paths.available_option_symbols(greeks=True)) & set(study_df["symbol"].unique())
+    available = set(paths.available_option_symbols()) & set(study_df["symbol"].unique())
 
     frames = []
     for symbol in sorted(available):

@@ -6,7 +6,7 @@ ThetaData more.
 
 Sample: five S&P 500 roots (AAPL, NVDA, JNJ, MOH, NWSA) across two one-month
 windows, 332,632 contract-days, plus a sweep of all 114,366,912 contract-days
-already in `data_store/options_2025/`.
+already in `data_store/option_greeks/`.
 
 ## 1. What the account can actually call
 

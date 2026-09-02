@@ -1,6 +1,6 @@
 """Read side of the repo: one import for every dataset in `data_store/`.
 
-    from data_access_layer import load_index_closes, load_option_chain
+    from data_access_layer import load_index_closes, load_option_greeks
 
 Pipelines write, this layer reads. Research code should never touch a parquet
 path directly.
@@ -11,7 +11,6 @@ from data_access_layer.loaders import (
     load_fred_rates,
     load_index_closes,
     load_indices,
-    load_option_chain,
     load_open_interest,
     load_option_greeks,
     load_rates,
@@ -44,7 +43,6 @@ __all__ = [
     "load_fred_rates",
     "load_index_closes",
     "load_indices",
-    "load_option_chain",
     "load_open_interest",
     "load_option_greeks",
     "load_rates",
