@@ -83,8 +83,21 @@ findings index at the bottom.
   reach 2023-06-01 on free.
 - **365-day cap per request** (`INVALID_ARGUMENT`). `reference.date_chunks`
   stitches longer windows; anything new that spans years needs the same.
-- **One ThetaClient per process.** A second one invalidates the first with
-  "Invalid session ID". Always go through `data_pipelines.common.make_client`.
+- **One ThetaData session per ACCOUNT, not per process.** `make_client` keeps a
+  single client inside a process, but that is only half the rule: two *pipeline
+  processes* at once fight over the one session and the loser gets
+  UNAUTHENTICATED "Invalid session ID. This can occur if more than one terminal
+  is running" on every request. Measured: a 4-root greeks pull run alongside an
+  open-interest pull failed all 4 roots and wrote nothing, while the other pull
+  survived and lost 3 symbols. So **only one pull may run at a time**, and that
+  includes a throwaway probe script in another shell — those are separate
+  processes too. Backfill years must be chained sequentially, never
+  parallelised. Within one process, `--workers` threads share the session
+  safely; that is where concurrency belongs.
+- **A long pull outlives its session.** UNAUTHENTICATED is retryable, but only
+  if the client is rebuilt: `common.reset_client` drops the shared client and
+  `with_retries` calls it. Without that, one expiry poisons every remaining
+  symbol on the dead channel.
 - **Free tier is 1 server thread**, so 2 workers is the practical ceiling; more
   returns `RESOURCE_EXHAUSTED` and the retry backoff eats the gain.
 
@@ -150,16 +163,23 @@ the work. It is not tradeable: break-even is 25.4% of the quoted spread at a
 assumption charges. The textbook `IV - E[RV]` definition is the *worst* real
 signal in the race, because with GARCH badly calibrated on these names the sort
 ranks mostly on forecast error. Two structural findings: the gross edge
-concentrates in illiquid names — but that is a *gross* statement, and open
-interest also buys tighter quotes, so the net-optimal floor is unknown and
-probably much higher; and a decile sort is incompatible with a real liquidity
-screen at all, because the median day only offers 15 eligible names at an OI
-floor of 500. The quantity that decides tradeability is quoted spread per
-dollar of vega, `(ask - bid) * 100 / vega`: it falls 46% going from 30-day to
-120-day contracts (ATM vega grows as sqrt(T), spreads are tick-driven) and
-another 2.5x from the thinnest to the richest OI bucket, so fixing the tenor at
-30 days was the study's most expensive unforced choice. Underlying price does
-not move it at all.
+concentrates in illiquid names *at a 30-day tenor only* — at 120 days gross
+Sharpe is flat (2.19 to 2.03) across OI floors from 25 to 1,000, so the
+conflict between signal and liquidity screen is a short-tenor artifact; and a
+decile sort is incompatible with a real liquidity screen at 30 days, because
+the median day only offers 15 eligible names at an OI floor of 500, though
+long-dated contracts carry OI far more evenly and keep 204 of 250 formation
+days. **Option tenor mattered more than either variable the study set out to
+sweep**, and 30 days was inherited from the signal definition rather than
+chosen: gross Sharpe roughly doubles at 60-120 days. The quantity that decides
+tradeability is quoted spread per dollar of vega, `(ask - bid) * 100 / vega`
+(`cost_efficiency.py`): it falls 46% from 30-day to 120-day contracts (ATM vega
+grows as sqrt(T), spreads are tick-driven) and another 2.5x from the thinnest
+to the richest OI bucket, while underlying price does not move it at all. The
+respec takes break-even from 0.146 to 0.385 against the 0.5 needed — still
+untradeable, but off by 1.3x rather than 3.4x. Holding longer does not close
+the rest: the signal has a half-life, so gross P&L per day decays about as fast
+as turnover cost falls.
 
 `research/data_quality/` — audit behind the corporate-actions work. The feed
 itself is near-spotless: over 114M stored

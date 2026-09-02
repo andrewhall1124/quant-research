@@ -149,12 +149,22 @@ def build_context(
     )
 
 
-def get_marks(context: BacktestContext, legs_df: pl.DataFrame, holding_days: int) -> pl.DataFrame:
-    """Fetch (and cache) daily quotes for the contracts a run actually selected.
+def get_marks(
+    context: BacktestContext,
+    legs_df: pl.DataFrame,
+    holding_days: int,
+    cache_key: tuple,
+) -> pl.DataFrame:
+    """Fetch (and cache) daily quotes for the contracts a structure can select.
 
-    Keyed on the structure's contract set and the holding window, so every
-    configuration sharing a structure and a hold reuses one fetch — which is
-    every point in an OI-threshold sweep.
+    `legs_df` is every leg the structure produced, *before* any eligibility
+    filter. That is deliberate and it is what makes a filter sweep affordable:
+    keying the cache on the filtered set would miss on every threshold, so an
+    OI grid would refetch the marks once per point. Fetching the superset once
+    costs a larger single read and turns the whole sweep into a dictionary
+    lookup.
+
+    `cache_key` therefore identifies the structure and the holding period only.
     """
     contracts_df = (
         legs_df.group_by("symbol", "expiration", "strike", "right")
@@ -166,11 +176,10 @@ def get_marks(context: BacktestContext, legs_df: pl.DataFrame, holding_days: int
         (pl.col("mark_to") + pl.duration(days=int(holding_days * 1.6) + 5)).alias("mark_to")
     )
 
-    key = (contracts_df.height, holding_days, int(contracts_df["mark_from"].min().toordinal()))
-    if key not in context.marks_cache:
+    if cache_key not in context.marks_cache:
         print(f"  fetching marks for {contracts_df.height:,} contracts", flush=True)
-        context.marks_cache[key] = panel_module.build_marks_panel(contracts_df)
-    return context.marks_cache[key]
+        context.marks_cache[cache_key] = panel_module.build_marks_panel(contracts_df)
+    return context.marks_cache[cache_key]
 
 
 def run(config: BacktestConfig, context: BacktestContext) -> BacktestResult:
@@ -197,15 +206,27 @@ def run(config: BacktestConfig, context: BacktestContext) -> BacktestResult:
         config.gross_vega_per_side,
         config.min_names_per_side,
     )
+    if sized_df.height == 0:
+        raise ValueError(
+            "no day had enough eligible names on both sides to form a portfolio"
+        )
     diagnostics["formation_days"] = sized_df["date"].n_unique()
     diagnostics["mean_names_per_side"] = float(sized_df.group_by("date", "side").len()["len"].mean())
 
-    # Marks are fetched for every *ranked* name, not just the two traded
-    # deciles. The strategy only needs the traded legs, but the decile
-    # monotonicity check needs all ten, and fetching only the extremes would
-    # silently truncate the middle deciles at entry and report them as flat.
+    # Marks are fetched for every *scored* name — not just the two traded
+    # deciles, and not just the eligible ones. Two reasons. The decile
+    # monotonicity check needs all ten deciles, and fetching only the extremes
+    # would silently truncate the middle ones at entry and report them flat.
+    # And keying the cache on the post-filter set would miss on every point of
+    # a filter sweep, so an OI grid would refetch its marks once per threshold.
+    scored_legs_df = legs_df.join(scored_df.select("date", "symbol"), on=["date", "symbol"], how="semi")
+    marks_df = get_marks(
+        context,
+        scored_legs_df,
+        config.holding_days,
+        (getattr(config.structure, "name", "structure"), config.holding_days),
+    )
     ranked_legs_df = legs_df.join(ranked_df.select("date", "symbol"), on=["date", "symbol"], how="semi")
-    marks_df = get_marks(context, ranked_legs_df, config.holding_days)
     traded_legs_df = legs_df.join(sized_df.select("date", "symbol"), on=["date", "symbol"], how="semi")
 
     holdings_df = pnl_module.build_holdings(

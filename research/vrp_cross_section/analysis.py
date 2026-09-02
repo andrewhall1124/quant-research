@@ -86,6 +86,14 @@ IV_MIN_PERIODS = 40
 # sample as well.
 BASELINE_OI = 25
 
+# Tenors to sweep. The tolerance has to widen with the target because listed
+# expirations thin out: weeklies near the front, monthlies past ~60 days, and
+# quarterlies beyond that. A +/-7 day window that works at 30 days finds
+# nothing at 120.
+TENOR_GRID = [(30, 7), (60, 12), (90, 20), (120, 20)]
+NET_OI_GRID = [0, 25, 100, 250, 1000]
+NET_COST_FRACTION = 0.5
+
 # The screens that are not the point of the study but are needed for the
 # sizing to be sane at all. See `MinStructureVega` for why.
 BASE_FILTERS = (MinStructureVega(5.0), MinUnderlyingPrice(10.0))
@@ -172,6 +180,89 @@ def run_cost_grid(context) -> tuple[pl.DataFrame, list]:
             )
             results.append(run(config, context))
             print(f"  {config.label}: {metrics.summarize(results[-1].daily_pnl, holding)}", flush=True)
+    return metrics.compare(results), results
+
+
+def run_tenor_grid(context) -> tuple[pl.DataFrame, list]:
+    """Option tenor x open-interest floor, gross and net of half the spread.
+
+    The experiment the first pass of this study could not do, because it fixed
+    the option tenor at 30 days and swept the liquidity floor on gross P&L
+    alone. Both of those choices turn out to move the quantity that actually
+    decides tradeability — quoted spread per dollar of vega — and they move it
+    in the same direction, so the interesting cell is the far corner: long
+    tenor, real open interest, charged for its own execution.
+
+    See `cost_efficiency.py` for the measurement that motivates the grid. What
+    it cannot say is whether the *signal* survives out there: long-dated
+    implied vol is smoother and less dispersed cross-sectionally, and the
+    liquidity screen already costs gross Sharpe. That is what this measures.
+    """
+    results = []
+    for target_dte, dte_error in TENOR_GRID:
+        structure = AtmStraddle(
+            target_dte=target_dte, max_dte_error=dte_error, max_moneyness=0.05
+        )
+        for floor in NET_OI_GRID:
+            filters = BASE_FILTERS + ((MinOpenInterest(floor),) if floor else ())
+            for fraction in (0.0, NET_COST_FRACTION):
+                config = baseline_config(
+                    structure=structure,
+                    eligibility=filters,
+                    spread_cost_fraction=fraction,
+                    label=f"{target_dte}d oi>={floor} cost={fraction:g}",
+                )
+                try:
+                    results.append(run(config, context))
+                except ValueError as error:
+                    # A thin cell — long tenor plus a hard liquidity floor can
+                    # leave too few names to cut into deciles on any day. That
+                    # is a finding about the cross-section, not a failure.
+                    print(f"  {config.label}: skipped ({error})", flush=True)
+                    continue
+                print(f"  {config.label}: {results[-1].diagnostics['formation_days']} days", flush=True)
+    return metrics.compare(results), results
+
+
+def tenor_matrix(grid_df: pl.DataFrame, column: str = "sharpe_annual") -> pl.DataFrame:
+    """Reshape the tenor grid into tenor x open-interest, one cost level."""
+    parsed = grid_df.with_columns(
+        pl.col("label").str.extract(r"^(\d+)d").cast(pl.Int32).alias("tenor"),
+        pl.col("label").str.extract(r"oi>=(\d+)").cast(pl.Int32).alias("oi"),
+        pl.col("label").str.extract(r"cost=([\d.]+)").cast(pl.Float64).alias("cost"),
+    )
+    return parsed.pivot(on="oi", index=["cost", "tenor"], values=column).sort("cost", "tenor")
+
+
+def run_turnover_grid(context) -> tuple[pl.DataFrame, list]:
+    """Long-dated contracts held for longer, which is the last cost lever.
+
+    Cost is paid per round trip, so break-even scales roughly with how long a
+    position is kept. A 30-day contract cannot be held 63 days; a 120-day one
+    can, and barely decays over that window. This is the lever the original
+    spec could not pull, because it tied the option tenor to the signal
+    horizon and then had to roll every three weeks.
+    """
+    structure = AtmStraddle(target_dte=120, max_dte_error=20, max_moneyness=0.05)
+    results = []
+    for holding in (21, 42, 63):
+        for floor in (100, 250):
+            for fraction in (0.0, NET_COST_FRACTION):
+                config = baseline_config(
+                    structure=structure,
+                    eligibility=BASE_FILTERS + (MinOpenInterest(floor),),
+                    holding_days=holding,
+                    spread_cost_fraction=fraction,
+                    label=f"120d hold={holding}d oi>={floor} cost={fraction:g}",
+                )
+                try:
+                    results.append(run(config, context))
+                except ValueError as error:
+                    print(f"  {config.label}: skipped ({error})", flush=True)
+                    continue
+                print(f"  {config.label}: sharpe "
+                      f"{metrics.summarize(results[-1].daily_pnl, holding)['sharpe_annual']:.2f}",
+                      flush=True)
     return metrics.compare(results), results
 
 
@@ -311,6 +402,53 @@ def plot_costs(cost_df: pl.DataFrame, filename: str) -> None:
     plt.close(figure)
 
 
+def plot_tenor(tenor_df: pl.DataFrame, filename: str) -> None:
+    """Gross Sharpe and break-even spread across tenor and open interest.
+
+    The left panel is the surprise: gross performance improves with tenor, and
+    at 120 days it barely notices the liquidity screen that destroys the
+    30-day version. The right panel is why that still is not enough.
+    """
+    parsed = tenor_df.with_columns(
+        pl.col("label").str.extract(r"^(\d+)d").cast(pl.Int32).alias("tenor"),
+        pl.col("label").str.extract(r"oi>=(\d+)").cast(pl.Int32).alias("oi"),
+        pl.col("label").str.extract(r"cost=([\d.]+)$").cast(pl.Float64).alias("cost"),
+    )
+    figure, axes = plt.subplots(1, 2, figsize=(12.5, 4.4))
+    colours = ["#C44E52", "#DD8452", "#55A868", "#4C72B0"]
+    # The floors are categories, not a scale — 0 has no place on a log axis
+    # and a linear one buries everything below 250.
+    floors = NET_OI_GRID
+    positions = list(range(len(floors)))
+
+    for axis, cost, column, ylabel, title in (
+        (axes[0], 0.0, "sharpe_annual", "gross annualized Sharpe",
+         "Longer tenor survives the liquidity screen"),
+        (axes[1], NET_COST_FRACTION, "break_even_spread_frac",
+         "break-even fraction of quoted spread", "...but still cannot pay for itself"),
+    ):
+        subset = parsed.filter(pl.col("cost") == cost)
+        for colour, tenor in zip(colours, [t for t, _ in TENOR_GRID]):
+            row = subset.filter(pl.col("tenor") == tenor).sort("oi")
+            lookup = dict(zip(row["oi"].to_list(), row[column].to_list()))
+            axis.plot(positions, [lookup.get(f) for f in floors], marker="o",
+                      color=colour, lw=1.7, label=f"{tenor}-day")
+        axis.set_xticks(positions)
+        axis.set_xticklabels([str(f) for f in floors])
+        axis.set_xlabel("minimum open interest")
+        axis.set_ylabel(ylabel)
+        axis.set_title(title)
+
+    axes[0].axhline(0, color="#2A2A2A", lw=1)
+    axes[0].legend(frameon=False, fontsize=8, title="option tenor", title_fontsize=8)
+    axes[1].axhline(0.5, color="#2A2A2A", lw=1.2, ls="--")
+    axes[1].text(0.02, 0.52, "half-spread each way — tradeable above this",
+                 fontsize=8, color="#666666", transform=axes[1].get_yaxis_transform())
+    figure.tight_layout()
+    figure.savefig(FIGURES / filename)
+    plt.close(figure)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--refresh", action="store_true", help="refit the vol forecasts")
@@ -339,6 +477,10 @@ def main() -> None:
     race_df, race_results = run_signal_race(context)
     print("cost grid")
     cost_df, cost_results = run_cost_grid(context)
+    print("tenor x open-interest grid")
+    tenor_df, tenor_results = run_tenor_grid(context)
+    print("turnover grid (120-day contracts held longer)")
+    turnover_df, turnover_results = run_turnover_grid(context)
 
     decile_df = metrics.decile_table(baseline.decile_pnl, HORIZON)
 
@@ -346,6 +488,8 @@ def main() -> None:
     holding_df.write_csv(RESULTS / "holding_grid.csv")
     race_df.write_csv(RESULTS / "signal_race.csv")
     cost_df.write_csv(RESULTS / "cost_grid.csv")
+    tenor_df.write_csv(RESULTS / "tenor_grid.csv")
+    turnover_df.write_csv(RESULTS / "turnover_grid.csv")
     decile_df.write_csv(RESULTS / "decile_monotonicity.csv")
     baseline.daily_pnl.write_csv(RESULTS / "baseline_daily_pnl.csv")
 
@@ -353,6 +497,7 @@ def main() -> None:
     plot_deciles(baseline, "02_deciles.png")
     plot_grid(oi_df, holding_df, "03_grids.png")
     plot_costs(cost_df, "04_costs.png")
+    plot_tenor(tenor_df, "05_tenor.png")
 
     print("\n=== open interest ===")
     print(oi_df)
@@ -363,6 +508,16 @@ def main() -> None:
     print("\n=== transaction costs ===")
     print(cost_df.select("label", "days", "mean_daily_pnl", "t_stat_nw", "sharpe_annual",
                          "gross_pnl", "spread_cost", "break_even_spread_frac"))
+    print("\n=== tenor x open interest: NET Sharpe (half spread each way) ===")
+    print(tenor_matrix(tenor_df.filter(pl.col("label").str.contains("cost=0.5"))))
+    print("\n=== tenor x open interest: GROSS Sharpe ===")
+    print(tenor_matrix(tenor_df.filter(pl.col("label").str.contains("cost=0 "))))
+    print("\n=== tenor x open interest: break-even spread fraction ===")
+    print(tenor_matrix(tenor_df.filter(pl.col("label").str.contains("cost=0.5")),
+                       "break_even_spread_frac"))
+    print("\n=== turnover: 120-day contracts held longer ===")
+    print(turnover_df.select("label", "formation_days", "mean_daily_pnl", "t_stat_nw",
+                             "sharpe_annual", "total_pnl", "break_even_spread_frac"))
     print("\n=== decile monotonicity ===")
     print(decile_df)
 

@@ -35,6 +35,8 @@ configurations and scores them.
 | `results/holding_grid.csv` | the holding-period sweep |
 | `results/signal_race.csv` | five sorts through the same machinery |
 | `results/cost_grid.csv` | the same strategy charged 0 to 1x the quoted spread |
+| `results/tenor_grid.csv` | option tenor x open-interest floor, gross and net |
+| `results/turnover_grid.csv` | 120-day contracts held 21, 42 and 63 days |
 | `results/decile_monotonicity.csv` | all ten deciles held long |
 | `figures/*.png` | regenerated on every run |
 
@@ -45,8 +47,10 @@ configurations and scores them.
 - **Signal** each name's ATM implied vol against its own trailing 60-day IV
   history. The forecast-based `IV - E[RV]` definition is a variant, not the
   strategy — see the report for why.
-- **Instrument** the 30-day ATM straddle, expiration and strike chosen
-  point-in-time from that day's chain, delta-hedged daily at the close.
+- **Instrument** the ATM straddle, expiration and strike chosen point-in-time
+  from that day's chain, delta-hedged daily at the close. The headline runs use
+  a 30-day tenor; §5 of the report sweeps 30 to 120 days and finds the tenor
+  matters more than either variable the study set out to sweep.
 - **Portfolio** ten deciles, extremes traded, $10k of vega per side split
   equally across names. Vega-neutral by construction; all P&L in dollars.
 - **Costs** a configurable fraction of the quoted spread, charged against the
@@ -67,6 +71,11 @@ configurations and scores them.
    `cost_efficiency.py` measures the quantity that actually decides it — quoted
    spread per dollar of vega — and finds it varies almost 4x across choices
    this study fixed arbitrarily, tenor above all.
-3. **One year is not enough.** ~200 overlapping days is ~10 independent
+3. **Tenor was the wrong thing to hold fixed.** 30 days was inherited from the
+   signal definition. Gross Sharpe roughly doubles at 60-120 days, and at 120
+   days the edge stops being confined to illiquid names — it survives an
+   open-interest floor of 1,000 essentially intact, which no shorter tenor
+   does.
+4. **One year is not enough.** ~200 overlapping days is ~10 independent
    observations, over a window with one dominant shock. The grid searched more
    configurations than the sample can support.

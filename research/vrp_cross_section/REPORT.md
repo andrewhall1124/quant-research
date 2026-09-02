@@ -9,6 +9,12 @@ with a Newey-West t of 5.9. It can afford to cross **25.4%** of the quoted
 spread each way. The ordinary assumption is 50%. At that level it loses
 $824k, and the gross Sharpe of 5.87 becomes −4.77.
 
+Sections 1-4 are the strategy as originally specified: a 30-day straddle. §5 is
+the respec that followed from asking where the costs actually come from, and it
+is the more useful half of the report — the option tenor turns out to matter
+more than either variable the study set out to sweep, and it takes break-even
+from 0.146 to 0.385 without making the strategy tradeable.
+
 Everything else here is either evidence that the gross signal is real, or
 evidence about why it is untradeable.
 
@@ -113,7 +119,81 @@ direction: its gross P&L scales up 4.9× while its turnover cost scales only
 
 ![costs](figures/04_costs.png)
 
-## 5. The hedge is a large drag
+## 5. Respec: tenor is the variable that mattered
+
+The first pass fixed the option tenor at 30 days, inherited from the signal
+definition rather than chosen, and swept only the liquidity floor and the hold.
+Both of the fixed choices turn out to move the result more than either swept
+one.
+
+**Gross Sharpe, 21-day hold, by tenor and open-interest floor:**
+
+| tenor | oi>=0 | oi>=25 | oi>=100 | oi>=250 | oi>=1000 |
+|---|---|---|---|---|---|
+| 30d | 1.63 | 1.65 | 1.49 | 0.88 | **-0.81** |
+| 60d | **3.48** | 2.69 | 2.73 | 1.90 | 0.02 |
+| 90d | 3.09 | 1.90 | 1.57 | 0.91 | -1.01 |
+| 120d | 3.35 | 2.19 | 2.07 | **2.09** | **2.03** |
+
+![tenor](figures/05_tenor.png)
+
+Two things in that table, and the second is the one worth keeping.
+
+**The gross signal gets stronger with tenor.** Doubling the tenor roughly
+doubles gross Sharpe. This was predicted to go the other way — long-dated
+implied vol is smoother and less dispersed cross-sectionally, so the z-score
+was expected to carry less information out there. The likely reading is the
+reverse: 30-day single-name implied vol is the *noisier* measure, dominated by
+earnings timing and gamma effects that are not the premium the strategy is
+trying to harvest.
+
+**"The edge lives in illiquid names" is a short-tenor artifact.** At 120 days
+gross Sharpe runs 2.19, 2.07, 2.09, 2.03 across floors from 25 to 1,000 —
+flat, with t-statistics of 2.5, 2.7, 2.8 and 1.9 — while the 30-day and 90-day
+versions collapse to negative. §3 was right to retract the claim on the grounds
+that it was gross-only; the fuller answer is that at a sensible tenor the
+conflict between the signal and the liquidity screen mostly disappears.
+Formation days behave the same way: 204 of 250 at 120 days with oi>=100,
+against 97 at 30 days, because long-dated contracts carry open interest far
+more evenly.
+
+### It is still not tradeable
+
+| | break-even spread |
+|---|---|
+| original spec (30d, oi>=25, 21-day hold) | 0.146 |
+| best cell (60d, oi>=100, 21-day hold) | **0.385** |
+
+A 2.6x improvement. The gap to the 0.5 an ordinary half-spread assumption
+demands went from needing a 3.4x improvement to needing 1.3x, and net Sharpe
+is still negative in every cell of every grid run here.
+
+### Holding longer does not close it either
+
+A 120-day contract can be held 63 days where a 30-day one cannot, which should
+cut cost per day threefold. It does — and gross P&L per day falls almost as
+fast:
+
+| hold | gross Sharpe | mean daily P&L | break-even |
+|---|---|---|---|
+| 21d | 2.09 | $560 | 0.247 |
+| 42d | 1.77 | $365 | 0.313 |
+| 63d | 1.58 | $273 | 0.312 |
+
+Break-even improves from 21 to 42 days and then flattens completely. **The
+signal has a half-life**; it is not a static mispricing that can be sat on
+while the turnover bill falls away.
+
+### What would be needed
+
+At 0.385 the strategy needs to execute at 39% of the quoted spread rather than
+50%. Single-name option quotes are wide relative to where a patient limit order
+actually fills, so that is not an absurd requirement — but this study models
+costs from *quotes*, not from fills, and has no evidence about achievable price
+improvement. The honest position is that the strategy moved from "off by 3.4x"
+to "off by 1.3x, contingent on execution quality not measured here".
+
+## 6. The hedge is a large drag
 
 Gross P&L decomposes into **+$350k from the options and −$180k from the delta
 hedge** at the 21-day hold. The hedge is doing its job — without it the book
@@ -127,7 +207,7 @@ curve rises fairly steadily rather than being one event.
 
 ![equity](figures/01_equity.png)
 
-## 6. What this sample cannot establish
+## 7. What this sample cannot establish
 
 - **~200 overlapping days is ~10 independent observations.** Newey-West at
   `holding_days` lags is applied throughout, but no correction manufactures
@@ -143,7 +223,7 @@ curve rises fairly steadily rather than being one event.
   1.65 (60-day) to 3.90 (20-day). A result that swings that much on one free
   parameter is not yet a strategy.
 
-## 7. What would actually move this forward
+## 8. What would actually move this forward
 
 1. **More history.** STANDARD reaches 2016 for options. Everything above is one
    year, and the honest limit on every conclusion here is sample size.
