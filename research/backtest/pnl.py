@@ -84,7 +84,7 @@ def attach_marks(holdings_df: pl.DataFrame, marks_df: pl.DataFrame) -> pl.DataFr
     marks = marks_df.select(
         pl.col("date").alias("mark_date"),
         "symbol", "expiration", "strike", "right",
-        "mid", "delta", "vega", "implied_vol", "underlying_price",
+        "mid", "bid", "ask", "delta", "vega", "implied_vol", "underlying_price",
     )
     return holdings_df.join(
         marks,
@@ -129,10 +129,47 @@ def truncate_at_failure(marked_df: pl.DataFrame, splits_df: pl.DataFrame) -> pl.
     return marked_df.join(good, on=[*cohort, "mark_date"], how="inner")
 
 
+def spread_costs(legs: pl.DataFrame, fraction: float) -> pl.DataFrame:
+    """Charge `fraction` of the quoted spread on entry and on exit.
+
+    `fraction = 0.5` is the usual assumption: you cross half the spread to get
+    filled at the mid-to-touch, once opening and once closing. `1.0` pays the
+    full quoted spread each way and is a hard lower bound on viability.
+
+    Costs are charged against the *quotes on the day*, not a modelled average,
+    because the spread is on the row: entry uses the formation-day quote, exit
+    uses the quote on the last day the cohort was marked. That matters here —
+    single-name option spreads widen exactly when the position is being closed
+    in a stressed tape.
+
+    Nothing is charged on the delta hedge. Stock spreads are two to three
+    orders of magnitude tighter than these option spreads, so they would not
+    change any conclusion, and pretending to model them precisely would imply
+    an accuracy this study does not have.
+    """
+    cohort = ["formation_date", "symbol"]
+    leg = [*cohort, "expiration", "strike", "right"]
+    ordered = legs.sort([*leg, "k"])
+    edges = ordered.group_by(leg).agg(
+        pl.col("k").min().alias("k_entry"), pl.col("k").max().alias("k_exit")
+    )
+    marked = ordered.join(edges, on=leg, how="left").with_columns(
+        ((pl.col("ask") - pl.col("bid")).clip(lower_bound=0.0) * fraction
+         * pl.col("units").abs() * SHARES_PER_CONTRACT).alias("edge_cost")
+    )
+    return marked.with_columns(
+        pl.when((pl.col("k") == pl.col("k_entry")) | (pl.col("k") == pl.col("k_exit")))
+        .then(pl.col("edge_cost"))
+        .otherwise(0.0)
+        .alias("cost")
+    ).drop("k_entry", "k_exit", "edge_cost")
+
+
 def compute_pnl(
     marked_df: pl.DataFrame,
     underlying_df: pl.DataFrame,
     hedge_delta: bool,
+    spread_cost_fraction: float = 0.0,
 ) -> pl.DataFrame:
     """Daily dollar P&L per (cohort, mark date), split into option and hedge.
 
@@ -158,11 +195,17 @@ def compute_pnl(
             (pl.col("units") * pl.col("vega")).alias("position_vega"),
         )
     )
+    legs = (
+        spread_costs(legs, spread_cost_fraction)
+        if spread_cost_fraction
+        else legs.with_columns(pl.lit(0.0).alias("cost"))
+    )
 
     by_day = (
         legs.group_by([*cohort, "mark_date", "k"])
         .agg(
             pl.col("option_pnl").sum(),
+            pl.col("cost").sum(),
             pl.col("position_delta").sum(),
             pl.col("position_vega").sum(),
             pl.col("side").first(),
@@ -197,7 +240,8 @@ def compute_pnl(
         by_day = by_day.with_columns(pl.lit(0.0).alias("hedge_pnl"))
 
     return by_day.with_columns(
-        (pl.col("option_pnl") + pl.col("hedge_pnl")).alias("total_pnl")
+        (pl.col("option_pnl") + pl.col("hedge_pnl") - pl.col("cost")).alias("total_pnl"),
+        (pl.col("option_pnl") + pl.col("hedge_pnl")).alias("gross_pnl"),
     )
 
 

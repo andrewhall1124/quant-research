@@ -62,8 +62,12 @@ class AtmStraddle:
             pl.col("moneyness").abs() <= self.max_moneyness,
         )
         if self.require_quotes:
+            # `ask >= bid` drops crossed quotes. `research/data_quality/` put
+            # them at 0.008% of stored contract-days, but they survive into the
+            # near-money 30-day band this selects from and produce a negative
+            # spread, so they are excluded explicitly rather than assumed away.
             candidates = candidates.filter(
-                pl.col("bid") > 0, pl.col("ask") > 0, pl.col("vega") > 0
+                pl.col("bid") > 0, pl.col("ask") >= pl.col("bid"), pl.col("vega") > 0
             )
         if self.max_iv_error is not None:
             # ~3% of contract-days fail to invert and come back pinned at 0.5
@@ -131,7 +135,7 @@ class Strangle:
         )
         if self.require_quotes:
             candidates = candidates.filter(
-                pl.col("bid") > 0, pl.col("ask") > 0, pl.col("vega") > 0
+                pl.col("bid") > 0, pl.col("ask") >= pl.col("bid"), pl.col("vega") > 0
             )
         if self.max_iv_error is not None:
             candidates = candidates.filter(pl.col("iv_error").abs() <= self.max_iv_error)

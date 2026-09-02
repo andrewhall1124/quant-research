@@ -59,6 +59,26 @@ def summarize(daily_pnl: pl.DataFrame, holding_days: int, column: str = "total_p
     }
 
 
+def break_even_spread(daily_pnl: pl.DataFrame, charged_fraction: float) -> float:
+    """The fraction of the quoted spread the gross P&L can pay and still break even.
+
+    Scaled by the fraction the run actually charged, so the answer is an
+    absolute property of the strategy rather than of the cost cell it was
+    measured in: charging 0.25 and charging 0.5 give the same number.
+
+    Read it against 0.5, the ordinary assumption that you cross half the
+    quoted spread on the way in and half on the way out. Below that, the
+    strategy cannot pay to trade itself, however good its gross Sharpe looks.
+    """
+    if "cost" not in daily_pnl.columns or not charged_fraction:
+        return float("nan")
+    gross = float(daily_pnl["gross_pnl"].sum())
+    charged = float(daily_pnl["cost"].sum())
+    if charged <= 0:
+        return float("inf") if gross > 0 else float("nan")
+    return charged_fraction * gross / charged
+
+
 def decile_table(decile_pnl: pl.DataFrame, holding_days: int) -> pl.DataFrame:
     """Mean daily P&L by quantile — the monotonicity check.
 
@@ -86,8 +106,22 @@ def compare(results: list, holding_days_by_label: dict | None = None) -> pl.Data
                 "label": result.config.label,
                 "filters": result.diagnostics.get("filters", ""),
                 "holding_days": holding,
+                # Both matter, and only together. A tight screen shrinks the
+                # cross-section *and* drops whole formation days, because a
+                # decile of two names is not a portfolio and `min_names_per_side`
+                # removes that day entirely. Comparing Sharpe across a filter
+                # grid without reading `formation_days` compares different
+                # samples, not different screens.
+                "formation_days": result.diagnostics.get("formation_days", None),
                 "names_per_side": round(result.diagnostics.get("mean_names_per_side", float("nan")), 1),
                 **stats,
+                "gross_pnl": float(result.daily_pnl["gross_pnl"].sum())
+                if "gross_pnl" in result.daily_pnl.columns else float("nan"),
+                "spread_cost": float(result.daily_pnl["cost"].sum())
+                if "cost" in result.daily_pnl.columns else float("nan"),
+                "break_even_spread_frac": break_even_spread(
+                    result.daily_pnl, getattr(result.config, "spread_cost_fraction", 0.0)
+                ),
             }
         )
     return pl.DataFrame(rows)

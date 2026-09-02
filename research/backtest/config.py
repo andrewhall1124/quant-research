@@ -40,6 +40,12 @@ class BacktestConfig:
     holding_days: int = 21
     gross_vega_per_side: float = 10_000.0
     hedge_delta: bool = True
+    # Fraction of the quoted option spread paid on entry and again on exit.
+    # 0.0 runs on mids; 0.5 crosses half the spread each way, the usual
+    # assumption. Left at zero by default so a run reports the signal before it
+    # reports the execution, and `metrics.break_even_spread` says how much the
+    # gross result can afford.
+    spread_cost_fraction: float = 0.0
     min_names_per_side: int = 5
     start: date | None = None
     end: date | None = None

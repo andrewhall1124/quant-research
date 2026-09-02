@@ -15,8 +15,10 @@ them means re-deriving each one by hand.
 |---|---|---|---|---|
 | `universe.parquet` | `universe` | `load_universe` | 126,002 | 2025-01-02 → 2025-12-31 |
 | `underlying_2025.parquet` | `underlying` | `load_underlying` | 128,542 | 2025-01-02 → 2025-12-31 |
+| `underlying_history.parquet` | `underlying --start 2023-06-01` | `load_underlying(with_history=True)` | 203,496 | 2023-06-01 → 2024-12-31 |
 | `options_2025/<SYM>.parquet` | `options` | `load_option_chain` | 114,366,912 | 2025, 519 files, 1.64 GB |
 | `option_greeks/<SYM>.parquet` | `option_greeks` | `load_option_greeks` | 114,365,634 | 2025, 519 files, 8.5 GB |
+| `open_interest/<SYM>.parquet` | `open_interest` | joined in `research/backtest/panel.py` | 113,008,800 | 2025, 519 files, 438 MB |
 | `index_options_2025/<ROOT>.parquet` | `options --symbols` | `load_option_chain(index=True)` | 9,785,614 | 2025, 3 files, 0.16 GB |
 | `indices.parquet` | `reference` | `load_indices`, `load_index_closes` | 5,531 | 2024-01-02 → 2025-12-31 |
 | `yields.parquet` | `reference` | `load_yields` | 2,000 | 2024-01-02 → 2025-12-31 |
@@ -29,6 +31,37 @@ them means re-deriving each one by hand.
 Year-stamped names mark the expensive per-symbol pulls, pinned to the window
 they were pulled for. Reference tables are cheap to re-pull in full and carry
 no year.
+
+## `open_interest/`
+
+One parquet per symbol, 519 files, 113.0M contract-days, 438 MB. Calendar 2025.
+Written by `data_pipelines.open_interest`; read through the backtest's contract
+panel (`research/backtest/panel.py`), which joins it onto the greeks rows.
+
+| column | notes |
+|---|---|
+| `symbol`, `expiration`, `strike`, `right` | contract key; `right` is `CALL`/`PUT`, matching `option_greeks/` |
+| `timestamp` | stamped pre-open, ~06:30 ET |
+| `open_interest` | contracts standing after the *previous* session's close |
+
+Three things to know:
+
+- **It is a separate endpoint from the greeks.** `option_greeks/` carries
+  quotes, greeks and IV but no open interest; this is
+  `/v3/option/history/open_interest`, badged Value/Standard/Pro.
+- **It accepts a date range**, unlike the EOD greeks endpoint that forces
+  `expiration=*` a day at a time. A symbol-year is one request, so the whole
+  universe took ~3 hours rather than a day.
+- **The stamp is pre-open and the figure is one day stale.** OI for session
+  *d* is not known until after *d* closes, so the print stamped on *d* reports
+  the position standing after *d-1*. That is the number available to someone
+  forming a position at *d*'s close, so it joins on `date` with no shift — but
+  do not read it as live.
+
+Median open interest on a near-money 30-day contract is low: 19 contracts on
+the thinner leg of an ATM straddle, 119 at the 75th percentile. A floor of 500
+leaves ~15 eligible names on the median day across the S&P 500.
+
 
 ## Things that are true of every ThetaData table
 

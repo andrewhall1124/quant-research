@@ -215,7 +215,9 @@ def run(config: BacktestConfig, context: BacktestContext) -> BacktestResult:
     kept_df = pnl_module.truncate_at_failure(marked_df, context.splits_df)
     diagnostics["marks_dropped_frac"] = round(1 - kept_df.height / max(marked_df.height, 1), 4)
 
-    by_cohort = pnl_module.compute_pnl(kept_df, context.underlying_df, config.hedge_delta)
+    by_cohort = pnl_module.compute_pnl(
+        kept_df, context.underlying_df, config.hedge_delta, config.spread_cost_fraction
+    )
 
     # Entry day carries no P&L; it is the mark the first change is measured from.
     live = by_cohort.filter(pl.col("k") > 0)
@@ -225,6 +227,8 @@ def run(config: BacktestConfig, context: BacktestContext) -> BacktestResult:
         .agg(
             pl.col("option_pnl").sum(),
             pl.col("hedge_pnl").sum(),
+            pl.col("cost").sum(),
+            pl.col("gross_pnl").sum(),
             pl.col("total_pnl").sum(),
             (pl.col("total_pnl") * (pl.col("side") > 0)).sum().alias("long_pnl"),
             (pl.col("total_pnl") * (pl.col("side") < 0)).sum().alias("short_pnl"),
@@ -238,7 +242,11 @@ def run(config: BacktestConfig, context: BacktestContext) -> BacktestResult:
     # is the P&L of one book run at the target vega, not h books stacked.
     scale = 1.0 / config.holding_days
     daily_pnl = daily_pnl.with_columns(
-        [pl.col(c) * scale for c in ["option_pnl", "hedge_pnl", "total_pnl", "long_pnl", "short_pnl"]]
+        [
+            pl.col(c) * scale
+            for c in ["option_pnl", "hedge_pnl", "cost", "gross_pnl",
+                      "total_pnl", "long_pnl", "short_pnl"]
+        ]
     )
 
     decile_pnl = (
@@ -254,6 +262,7 @@ def run(config: BacktestConfig, context: BacktestContext) -> BacktestResult:
             ),
             context.underlying_df,
             config.hedge_delta,
+            config.spread_cost_fraction,
         )
         .filter(pl.col("k") > 0)
         .group_by("mark_date", "quantile")

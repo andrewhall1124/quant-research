@@ -131,6 +131,21 @@ A study may cache an expensive intermediate under its own `results/` — as
 
 ### Findings so far
 
+`research/vrp_cross_section/` — the first strategy study, and the first user of
+`research/backtest/`. Ranking single names daily on how rich their 30-day ATM
+straddle is (each name's IV against its own 60-day history), buying the
+cheapest decile against the richest, vega-weighted and delta-hedged, produces a
+clean gross signal — all ten deciles split on sign, and the raw-IV control
+loses (Sharpe -0.75), so the normalisation rather than the vol level is doing
+the work. It is not tradeable: break-even is 25.4% of the quoted spread at a
+5-day hold and 14.6% at 21 days, against the 50% an ordinary half-spread-each-way
+assumption charges. The textbook `IV - E[RV]` definition is the *worst* real
+signal in the race, because with GARCH badly calibrated on these names the sort
+ranks mostly on forecast error. Two structural findings: the gross edge
+concentrates in illiquid names, so the OI screen and the signal pull against
+each other; and a decile sort is incompatible with a real liquidity screen at
+all, because the median day only offers 15 eligible names at an OI floor of 500.
+
 `research/data_quality/` — audit behind the corporate-actions work. The feed
 itself is near-spotless: over 114M stored
 contract-days, 0.008% crossed quotes, 0.004% missing quotes, no nulls, no
@@ -183,6 +198,18 @@ $80, Pro $160 /mo. First access date by tier: options FREE 2023-06-01, VALUE
   a Standard/Pro badge on their own doc pages. The one endpoint that gives
   greeks and IV off the EOD report — `/v3/option/history/greeks/eod` — is
   badged Standard/Pro. Do not buy VALUE expecting EOD greeks.
+- **The open-interest endpoint takes a date range**, unlike the EOD greeks one,
+  so a symbol-year is a single request rather than ~250 and a 500-name year is
+  ~3 hours rather than a day. It is also stamped pre-open (~06:30 ET) and
+  reports the position standing after the *previous* close, which is the number
+  a trader forming at today's close actually knows — so it joins onto the same
+  date with no shift, but it is settled and one day stale.
+- **Single-name option liquidity is thinner than index intuition suggests.**
+  The median 30-day ATM straddle in the S&P 500 carries 19 contracts of open
+  interest on its thinner leg, and quotes at 19.8% of mid (36.8% at the 75th
+  percentile). Any strategy study has to price execution before it reports a
+  Sharpe, and any cross-sectional sort has to check how many names survive its
+  screen — see `research/vrp_cross_section/`.
 - **Open interest is cheap.** `/v3/option/history/open_interest` is badged
   Value/Standard/Pro (the subscription table claims FREE); it is not what
   forces the tier.
