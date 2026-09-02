@@ -1,10 +1,29 @@
 """The VRP cross-section: long the cheapest options, short the richest.
 
-Every day, rank the S&P 500 names on their variance risk premium — the implied
-vol of a 30-day ATM straddle minus a forecast of what will actually be
-realized over that contract's life — sort into deciles, and buy the bottom
-decile against the top, each side equal-weighted by vega and delta-hedged
-daily.
+Every day, rank the S&P 500 names on how rich their 30-day ATM straddle is,
+sort into deciles, and buy the bottom decile against the top, each side
+equal-weighted by vega and delta-hedged daily.
+
+**The headline sort is the IV z-score**: each name's implied vol against its
+own trailing 60-day IV history. It measures the same thing a variance risk
+premium does — is this option expensive relative to what it should cost — but
+it does it without a realized-vol forecast, and that is why it leads.
+
+The obvious alternative, `IV - E[RV]` with a GARCH forecast, turned out to be
+a sort on forecast error rather than on option richness. Across deciles, the
+GARCH forecast spans about 36 vol points while implied vol spans 13, so the
+"cheapest" decile is really the decile where the model is extrapolating
+hardest — a 66% annualized forecast against a 38% market IV, mostly the April
+2025 shock echoing through the conditional variance. `single_name_vol` had
+already found GARCH badly calibrated on these names (MZ slope 0.23-0.45); this
+is what that miscalibration looks like when a strategy is built on it. It is
+kept as a variant in the signal race, not as the strategy.
+
+One cost of the switch is worth stating. The GARCH burn-in ran on *returns*,
+so pulling 2023-2024 underlying history bought it back cheaply. The z-score
+burns in on *implied vol*, which only exists where the option store does, so
+its first ~40 trading days of 2025 are unavoidably lost until more option
+history is pulled.
 
 Run it:
 
@@ -45,6 +64,12 @@ HORIZON = 21
 HOLDING_GRID = [5, 10, 21, 42]
 OI_GRID = [0, 100, 500, 2_000, 10_000]
 
+# The z-score window. 60 days is long enough for a stable location and scale
+# and short enough to leave most of 2025 usable; `min_periods` sets how much of
+# January is spent burning in.
+IV_WINDOW = 60
+IV_MIN_PERIODS = 40
+
 # The screens that are not the point of the study but are needed for the
 # sizing to be sane at all. See `MinStructureVega` for why.
 BASE_FILTERS = (MinStructureVega(5.0), MinUnderlyingPrice(10.0))
@@ -74,7 +99,7 @@ def setup_style() -> None:
 
 def baseline_config(**overrides) -> BacktestConfig:
     settings = dict(
-        signal=VrpSignal(forecast="GARCH", horizon=HORIZON),
+        signal=IvZScoreSignal(window=IV_WINDOW, min_periods=IV_MIN_PERIODS),
         structure=AtmStraddle(target_dte=30, max_dte_error=7, max_moneyness=0.05),
         eligibility=BASE_FILTERS,
         holding_days=HORIZON,
@@ -112,18 +137,23 @@ def run_holding_grid(context) -> tuple[pl.DataFrame, list]:
 def run_signal_race(context) -> tuple[pl.DataFrame, list]:
     """The same machinery on four different sorts.
 
-    The control that matters is `IvLevelSignal`. If sorting on raw implied vol
-    does as well as sorting on IV minus a forecast, the forecast is adding
-    nothing and the strategy is a high-vol/low-vol tilt in disguise. The
-    z-score variant needs no return model at all, so it is the version least
-    exposed to forecast error.
+    Two controls matter. `IvLevelSignal` sorts on raw implied vol: if it does
+    as well as the z-score, then the strategy is a high-vol/low-vol tilt and
+    the "relative to its own history" part is decoration. `vrp_garch` is the
+    forecast-based definition the study started with, kept so the report can
+    show what it does rather than just assert that it fails.
+
+    The two z-score windows are there because the choice of window is the one
+    free parameter the headline sort has, and a result that only survives at
+    one window is not a result.
     """
     filters = BASE_FILTERS + (MinOpenInterest(500),)
     signals = [
+        ("iv_zscore_60", IvZScoreSignal(window=IV_WINDOW, min_periods=IV_MIN_PERIODS)),
+        ("iv_zscore_20", IvZScoreSignal(window=20, min_periods=15)),
         ("vrp_garch", VrpSignal(forecast="GARCH", horizon=HORIZON)),
         ("vrp_rv", VrpSignal(forecast="RV", horizon=HORIZON)),
         ("iv_level", IvLevelSignal()),
-        ("iv_zscore", IvZScoreSignal(window=60)),
     ]
     results = []
     for label, signal in signals:
@@ -180,7 +210,7 @@ def plot_deciles(result, filename: str) -> None:
     colours = [PALETTE["long"] if m > 0 else PALETTE["short"] for m in means]
     axis.bar(quantiles, means, color=colours, alpha=0.85)
     axis.axhline(0, color="#2A2A2A", lw=1)
-    axis.set_xlabel("VRP decile  (0 = cheapest, 9 = richest)")
+    axis.set_xlabel("richness decile  (0 = cheapest, 9 = richest)")
     axis.set_ylabel("mean daily P&L, dollars")
     axis.set_title("Every decile held long — is the sort monotonic?")
     axis.set_xticks(quantiles)

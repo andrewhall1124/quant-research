@@ -85,7 +85,18 @@ class IvZScoreSignal:
     Removes the persistent cross-sectional level — a high-vol name always looks
     rich in absolute terms — and sorts on the time-series deviation instead.
     Needs no return model at all, so it is the variant least exposed to
-    forecast error.
+    forecast error, which is why `research/vrp_cross_section/` leads with it.
+
+    Two properties worth being explicit about:
+
+    * The window counts **observations, not calendar days**. It is applied
+      after structure selection, so a name that could not be traded on some
+      days contributes no row for them. That is the right behaviour — the
+      history being compared against is the history of the thing being traded
+      — but it means the lookback is not a fixed date range.
+    * The window includes the current row, which is correct rather than
+      lookahead: today's implied vol is known at today's close, which is when
+      the position is formed.
     """
 
     def __init__(self, window: int = 60, min_periods: int = 40):
