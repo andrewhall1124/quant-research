@@ -15,3 +15,9 @@ wheels/
 # Pulled data (everything but the layout note)
 data_store/*
 !data_store/README.md
+
+# Cached API samples inside studies
+research/*/sample/
+
+# Playwright MCP scratch output
+.playwright-mcp/

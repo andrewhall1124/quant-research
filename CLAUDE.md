@@ -31,9 +31,23 @@ where a dependency forces it (`arch`, `read_html`).
 - **SPX vs SPXW.** The `SPX` root holds only third-Friday monthlies; every weekly
   and end-of-month expiration is under `SPXW`. Asking `SPX` for a 30-dte chain
   returns empty on most days. Use `SPXW` for anything dte-targeted.
-- **Free tier has no greeks and no IV.** Implied vol has to be either taken from
-  the VIX complex (free, EOD) or inverted from option mids yourself. Greeks and
-  the IV endpoint need STANDARD.
+- **Free tier has no greeks, no IV and no open interest.** Implied vol has to be
+  either taken from the VIX complex (free, EOD) or inverted from option mids
+  yourself. Server-confirmed: greeks and IV need STANDARD, open interest needs
+  VALUE. `research/data_quality/analysis.py` re-probes this in a few seconds.
+- **Prices are raw, never adjusted.** `underlying_2025.parquet` holds six
+  unadjusted splits (ORLY 15:1, NFLX 10:1, NOW 5:1, IBKR 4:1, TPL 3:1, FAST
+  2:1), so a return off `close` books a -93% day on ORLY. The split session can
+  also be corrupt: NVDA's 2024-06-10 high is 195.95 against a real range near
+  117-123. The client exposes no splits endpoint despite the tier table listing
+  one.
+- **Delisted names get a zero row, not a missing row.** HES 2025-07-18, JNPR
+  2025-07-02, K 2025-12-11 each end with open=high=low=close=0 (HES with real
+  volume attached). Zero, not null, so nothing downstream flags it.
+- **Untraded option contracts have close=0, not null.** 53% of contract-days
+  never trade, and their OHLC is 0.0. Filter on `volume > 0` or use the mid.
+  The EOD chain also has no `date` and no underlying price - the session date
+  comes from `created.dt.date()`.
 - **History depth is quoted per request, by tier.** Index history: 2024-01-01 is
   free, 2023 asks for VALUE, 2022 STANDARD, 2020 PROFESSIONAL. Stocks and options
   reach 2023-06-01 on free.
@@ -67,6 +81,14 @@ so an interrupted pull can just be re-run.
   clean and pairwise significance usually is not.
 
 ### Findings so far
+
+`research/data_quality/` — the feed itself is near-spotless: over 114M stored
+contract-days, 0.008% crossed quotes, 0.004% missing quotes, no nulls, no
+duplicates, no negative prices. Carry-adjusted put-call parity on ATM pairs
+prices back to the cash close within 3-8 bp for liquid names, so the quote legs
+and the close are genuinely simultaneous. Every real defect is a corporate
+action (see the quirks above) or a reused ticker (SOLS returns four Jan-Apr 2025
+rows at $0.0001 before its actual 2025-10-30 listing - the BNY problem again).
 
 `research/volatility/` — implied vol beats trailing RV, ARCH(5) and GARCH(1,1)
 at forecasting both forward realized and forward implied vol, at 5 and 21 days,
