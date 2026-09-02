@@ -30,6 +30,7 @@ EARNINGS = DATA_STORE / "earnings.parquet"
 
 # One parquet per symbol; too large to keep in a single file.
 OPTIONS_DIR = DATA_STORE / "options_2025"
+OPTION_GREEKS_DIR = DATA_STORE / "option_greeks"
 INDEX_OPTIONS_DIR = DATA_STORE / "index_options_2025"
 
 DATASETS = {
@@ -43,6 +44,7 @@ DATASETS = {
     "ticker_check": TICKER_CHECK,
     "earnings": EARNINGS,
     "options": OPTIONS_DIR,
+    "option_greeks": OPTION_GREEKS_DIR,
     "index_options": INDEX_OPTIONS_DIR,
 }
 
