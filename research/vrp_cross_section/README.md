@@ -39,6 +39,7 @@ configurations and scores them.
 | `results/turnover_grid.csv` | 120-day contracts held 21, 42 and 63 days |
 | `results/earnings_grid.csv` | the universe partitioned on earnings-before-expiry |
 | `results/earnings_profile.csv` | how much of the sort the earnings calendar explains |
+| `results/expiry_grid.csv` | positions held to expiration rather than sold to close |
 | `results/decile_monotonicity.csv` | all ten deciles held long |
 | `figures/*.png` | regenerated on every run |
 
@@ -56,7 +57,8 @@ configurations and scores them.
 - **Portfolio** ten deciles, extremes traded, $10k of vega per side split
   equally across names. Vega-neutral by construction; all P&L in dollars.
 - **Costs** a configurable fraction of the quoted spread, charged against the
-  actual quote on the entry and exit days.
+  actual quote on entry and, unless the position is held to expiry, on exit.
+  A settled position crosses once rather than twice, which halves the bill.
 - **Inference** Newey-West with `holding_days` lags on the aggregated daily
   series. Not Driscoll-Kraay — the cross-section is summed away before anything
   is tested. See `tools/backtest/README.md`.

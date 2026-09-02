@@ -3,18 +3,25 @@
 Rank the S&P 500 daily on how rich each name's 30-day ATM straddle is, buy the
 cheapest decile against the richest, equal-weight by vega, delta-hedge daily.
 
-**The result: a clean gross signal that cannot pay its own bid-ask spread.**
-At a 5-day hold the strategy makes $850k gross on a $20k vega book over 2025,
-with a Newey-West t of 5.9. It can afford to cross **25.4%** of the quoted
-spread each way. The ordinary assumption is 50%. At that level it loses
-$824k, and the gross Sharpe of 5.87 becomes −4.77.
+**The result: a clean gross signal that spends the whole study trying, and
+mostly failing, to pay its own bid-ask spread.**
 
-Sections 1-4 are the strategy as originally specified: a 30-day straddle. §5
-and §6 are the respec, and they are the more useful half of the report. The
-option tenor matters more than either variable the study set out to sweep, and
-the earnings calendar explains why. Together they take gross Sharpe from 1.65
-to 3.95 and break-even from 0.146 to 0.393 — a much better strategy, and still
-not a tradeable one.
+The strategy as originally specified — a 30-day straddle, held 21 days, sold to
+close — makes money gross and loses badly net. It can afford to cross **8.4%**
+of the quoted spread each way; the ordinary assumption is 50%.
+
+Four changes, each measured here, take that to **88.6%**: a 60-day tenor rather
+than 30, an open-interest floor of 250, excluding names whose contract life
+contains an earnings announcement, and holding to expiry rather than selling.
+Three configurations end up above the 50% bar and post the study's only
+positive net Sharpes.
+
+**That is a hypothesis, not a result.** The best cell rests on 66 formation
+dates at a ~60-day hold — on the order of *one* independent observation — and
+it is the maximum of roughly 145 configurations searched over a single year.
+§9 is the part of this report to read before acting on any of it.
+
+Sections 1-4 are the original specification, §5-§7 the respec.
 
 Everything else here is either evidence that the gross signal is real, or
 evidence about why it is untradeable.
@@ -104,19 +111,28 @@ measured here.
 Charged as a fraction of the quoted spread on the actual entry and exit days,
 so a position closing into a stressed tape pays the wider quote it really faced.
 
-| | gross P&L | break-even spread | net at 0.25× | net at 0.5× |
-|---|---|---|---|---|
-| 5-day hold | $850,507 | **0.254** | +$13,467 | −$823,573 |
-| 21-day hold | $172,781 | **0.146** | −$123,095 | −$418,970 |
+| | break-even spread | net Sharpe at 0.5× |
+|---|---|---|
+| 5-day hold | **0.121** | −12.9 |
+| 21-day hold | **0.084** | −6.2 |
 
 Break-even is the fraction of the quoted spread the gross P&L can pay each way
-and still reach zero. Both are far below 0.5. At an optimistic quarter-spread
-the 5-day hold nets $13k over a year on a $20k vega book — indistinguishable
-from zero, t = 0.09.
+and still reach zero. Both are far below 0.5 — the original specification is
+not close to viable, and pays roughly six to twelve times more in spread than
+it earns.
 
 The 5-day hold is the *more* cost-robust of the two, which is not the obvious
 direction: its gross P&L scales up 4.9× while its turnover cost scales only
-2.8×. Faster trading is better here, and still not good enough.
+2.8×. Faster trading is better here, and still nowhere near good enough.
+
+**A correction.** An earlier version of this report put these at 0.254 and
+0.146, exactly double. The entry half of the bid-ask cost was booked on the
+formation day, which the engine dropped from the reported series because it
+carries no market P&L — so only the exit crossing was ever charged. Every
+break-even figure in the first version of §4-§6 was therefore 2× too
+optimistic. The bug surfaced when hold-to-expiry, which pays only an entry
+cost, came back reporting infinite break-even. No gross result is affected:
+nothing in §1-§3, §5 or §6 charges costs.
 
 ![costs](figures/04_costs.png)
 
@@ -162,12 +178,11 @@ more evenly.
 
 | | break-even spread |
 |---|---|
-| original spec (30d, oi>=25, 21-day hold) | 0.146 |
-| best cell (60d, oi>=100, 21-day hold) | **0.385** |
+| original spec (30d, oi>=25, 21-day hold) | 0.084 |
+| best cell (60d, oi>=100, 21-day hold) | **0.193** |
 
-A 2.6x improvement. The gap to the 0.5 an ordinary half-spread assumption
-demands went from needing a 3.4x improvement to needing 1.3x, and net Sharpe
-is still negative in every cell of every grid run here.
+A 2.3x improvement, and still less than half of what is needed. Net Sharpe is
+negative in every cell of this grid.
 
 ### Holding longer does not close it either
 
@@ -177,9 +192,9 @@ fast:
 
 | hold | gross Sharpe | mean daily P&L | break-even |
 |---|---|---|---|
-| 21d | 2.09 | $560 | 0.247 |
-| 42d | 1.77 | $365 | 0.313 |
-| 63d | 1.58 | $273 | 0.312 |
+| 21d | 2.09 | $560 | 0.123 |
+| 42d | 1.77 | $365 | 0.156 |
+| 63d | 1.58 | $273 | 0.156 |
 
 Break-even improves from 21 to 42 days and then flattens completely. **The
 signal has a half-life**; it is not a static mispricing that can be sat on
@@ -187,12 +202,9 @@ while the turnover bill falls away.
 
 ### What would be needed
 
-At 0.385 the strategy needs to execute at 39% of the quoted spread rather than
-50%. Single-name option quotes are wide relative to where a patient limit order
-actually fills, so that is not an absurd requirement — but this study models
-costs from *quotes*, not from fills, and has no evidence about achievable price
-improvement. The honest position is that the strategy moved from "off by 3.4x"
-to "off by 1.3x, contingent on execution quality not measured here".
+At 0.193 the strategy still pays about 2.6x more in spread than it earns.
+Tenor is a real improvement and not a sufficient one. §7 is where the gap
+actually closes.
 
 ## 6. Earnings: a contaminant of the sort, not the source of the P&L
 
@@ -219,11 +231,11 @@ running each half as its own strategy:
 
 | | formation days | gross Sharpe | t (NW) | break-even |
 |---|---|---|---|---|
-| 30d, all | 161 | 1.65 | 2.23 | 0.146 |
-| 30d, earnings in life | 31 | 0.94 | 0.73 | 0.107 |
-| 30d, **no** earnings in life | 102 | **2.39** | 2.13 | 0.170 |
-| 60d, all | 163 | 2.73 | 3.12 | 0.385 |
-| 60d, **no** earnings in life | 72 | **3.95** | 3.18 | **0.393** |
+| 30d, all | 161 | 1.65 | 2.23 | 0.073 |
+| 30d, earnings in life | 31 | 0.94 | 0.73 | 0.053 |
+| 30d, **no** earnings in life | 102 | **2.39** | 2.13 | 0.100 |
+| 60d, all | 163 | 2.73 | 3.12 | 0.193 |
+| 60d, **no** earnings in life | 72 | **3.95** | 3.18 | **0.202** |
 
 The signal is *stronger* with the earnings names removed, not weaker. So
 earnings is a **contaminant of the ranking**, not the source of the returns:
@@ -257,16 +269,62 @@ against 2.07): it is the expiry test that matters, not proximity to the event.
 
 ### It does not rescue tradeability
 
-Best break-even in the entire study is now **0.393** — 60-day tenor, oi>=100,
-earnings excluded — against the 0.5 an ordinary half-spread assumption demands.
 Earnings conditioning is a **signal-quality lever, not a cost lever**: it
 raises gross Sharpe 44% while trading a third as often, so break-even barely
-moves (0.385 to 0.393). Cost is the binding constraint and this does not touch
+moves (0.193 to 0.202). Cost is the binding constraint and this does not touch
 it. Formation days also fall from 163 to 72, which at a 21-day hold is roughly
 three and a half independent observations, and the t of 3.18 should be read
 with that in front of it.
 
-## 7. The hedge is a large drag
+## 7. Hold to expiry, which is where the gap closes
+
+Every configuration so far sells its position to close, crossing the quoted
+spread twice. A position carried to expiration settles at intrinsic and crosses
+it once. That is arithmetic, not a hypothesis, and on a strategy whose binding
+constraint is spread it is worth more than every signal improvement in this
+report combined.
+
+The cost model charges only the entry crossing in this mode, and the final mark
+is intrinsic value rather than a quote — on the last day the quote is both
+unreliable and irrelevant, because the position is not sold. Verified directly:
+raw spend before cohort scaling is $11.6M held-and-sold against $5.81M
+held-to-expiry, a ratio of exactly 2.0.
+
+**Best cells, net of half the quoted spread:**
+
+| config | formation days | net Sharpe | break-even |
+|---|---|---|---|
+| 60d, oi>=250, no earnings | 66 | **+1.35** | **0.886** |
+| 90d, oi>=100, no earnings | 25 | +0.82 | 0.709 |
+| 60d, oi>=100, no earnings | 72 | +0.93 | 0.682 |
+| 60d, oi>=100, all names | 163 | −0.34 | 0.425 |
+| 30d, oi>=100, all names | 97 | −2.01 | 0.234 |
+
+Three configurations clear the 0.5 bar, and they are the only positive net
+Sharpes anywhere in this study. The levers compound as expected: hold-to-expiry
+roughly doubles break-even, tenor and the liquidity floor roughly double it
+again, and earnings exclusion adds a further half on top.
+
+What it costs is gross performance. At the 60-day tenor with oi>=100, holding
+to expiry takes gross Sharpe from 2.73 to 1.93, because the hold stretches from
+21 days to ~60 and §5 already established that this signal decays with hold
+length. It is a trade — worse signal, much cheaper execution — and on these
+numbers the trade is worth making.
+
+### Why this is not yet a result
+
+The best cell rests on **66 formation dates at a ~60-day hold**, which is on
+the order of *one* independent observation. Its t-statistic is 1.07. The
+90-day cell above it on break-even has 25 formation dates and is worth even
+less as evidence. And all of this is the maximum of roughly 145 configurations
+searched against a single year containing one dominant shock.
+
+The right reading is that hold-to-expiry is a **mechanically sound** change —
+the halving of cost is arithmetic and would hold in any sample — while the
+specific cell that clears 0.5 is a hypothesis to be tested on data this study
+does not have.
+
+## 8. The hedge is a large drag
 
 Gross P&L decomposes into **+$350k from the options and −$180k from the delta
 hedge** at the 21-day hold. The hedge is doing its job — without it the book
@@ -280,15 +338,21 @@ curve rises fairly steadily rather than being one event.
 
 ![equity](figures/01_equity.png)
 
-## 8. What this sample cannot establish
+## 9. What this sample cannot establish
 
 - **~200 overlapping days is ~10 independent observations.** Newey-West at
   `holding_days` lags is applied throughout, but no correction manufactures
   information that is not there.
-- **The grid searched more configurations than the sample supports** — 6 OI
-  floors × 4 holds × 5 signals × 4 cost levels. The best t in the study is 5.9;
-  in a search this wide over this little data, that number should be read as a
-  ranking device, not as a p-value.
+- **The grid searched roughly 145 configurations** — OI floors, holding
+  periods, signals, cost levels, tenors, earnings screens and exit rules. Over
+  ~200 overlapping days that is far more search than the sample supports. Every
+  t-statistic here should be read as a ranking device, not a p-value, and the
+  cells that look best are the ones most likely to be selection artifacts.
+- **The configurations that clear the cost bar are the thinnest.** The best
+  break-even in the study, 0.886, rests on 66 formation dates at a ~60-day
+  hold: about one independent observation, t = 1.07. The screens that make the
+  strategy affordable are the same ones that empty out the cross-section, and
+  that tension is unresolved here.
 - **One dominant shock.** April 2025 is the largest move in the window, the
   same limitation `research/volatility/` and `research/single_name_vol/` both
   report.
@@ -296,10 +360,13 @@ curve rises fairly steadily rather than being one event.
   1.65 (60-day) to 3.90 (20-day). A result that swings that much on one free
   parameter is not yet a strategy.
 
-## 9. What would actually move this forward
+## 10. What would actually move this forward
 
-1. **More history.** STANDARD reaches 2016 for options. Everything above is one
-   year, and the honest limit on every conclusion here is sample size.
+1. **More history, and it is now the only thing that matters.** STANDARD
+   reaches 2016 for options. §7 produced a configuration that clears the cost
+   bar on ~1 independent observation, out of ~145 searched; nothing about that
+   can be believed on one year. Every other item on this list is secondary to
+   re-running §5-§7 on a decade.
 2. **Attack the spread, not the signal.** The gross edge is not in doubt; the
    execution is. The quantity that sets break-even is the quoted spread per
    dollar of vega bought, `(ask - bid) * 100 / vega`, and it varies by almost

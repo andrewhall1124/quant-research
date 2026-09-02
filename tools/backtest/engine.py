@@ -190,6 +190,7 @@ def get_marks(
     legs_df: pl.DataFrame,
     holding_days: int,
     cache_key: tuple,
+    hold_to_expiry: bool = False,
 ) -> pl.DataFrame:
     """Fetch (and cache) daily quotes for the contracts a structure can select.
 
@@ -208,14 +209,32 @@ def get_marks(
     )
     # The hold runs past the last formation date, so the mark window has to be
     # extended by the holding period plus a weekend allowance.
-    contracts_df = contracts_df.with_columns(
-        (pl.col("mark_to") + pl.duration(days=int(holding_days * 1.6) + 5)).alias("mark_to")
-    )
+    if hold_to_expiry:
+        # Every contract has to be markable right up to the day it settles.
+        contracts_df = contracts_df.with_columns(
+            pl.max_horizontal("mark_to", "expiration").alias("mark_to")
+        )
+    else:
+        contracts_df = contracts_df.with_columns(
+            (pl.col("mark_to") + pl.duration(days=int(holding_days * 1.6) + 5)).alias("mark_to")
+        )
 
     if cache_key not in context.marks_cache:
         print(f"  fetching marks for {contracts_df.height:,} contracts", flush=True)
         context.marks_cache[cache_key] = panel_module.build_marks_panel(contracts_df)
     return context.marks_cache[cache_key]
+
+
+def build_cohorts(
+    sized_df: pl.DataFrame,
+    legs_df: pl.DataFrame,
+    calendar_df: pl.DataFrame,
+    config: BacktestConfig,
+) -> pl.DataFrame:
+    """Expand sized positions into daily marks, by whichever exit rule applies."""
+    if config.hold_to_expiry:
+        return pnl_module.build_holdings_to_expiry(sized_df, legs_df, calendar_df)
+    return pnl_module.build_holdings(sized_df, legs_df, calendar_df, config.holding_days)
 
 
 def run(config: BacktestConfig, context: BacktestContext) -> BacktestResult:
@@ -270,24 +289,34 @@ def run(config: BacktestConfig, context: BacktestContext) -> BacktestResult:
         context,
         scored_legs_df,
         config.holding_days,
-        (getattr(config.structure, "name", "structure"), config.holding_days),
+        (
+            getattr(config.structure, "name", "structure"),
+            "expiry" if config.hold_to_expiry else config.holding_days,
+        ),
+        config.hold_to_expiry,
     )
     ranked_legs_df = legs_df.join(ranked_df.select("date", "symbol"), on=["date", "symbol"], how="semi")
     traded_legs_df = legs_df.join(sized_df.select("date", "symbol"), on=["date", "symbol"], how="semi")
 
-    holdings_df = pnl_module.build_holdings(
-        sized_df, traded_legs_df, context.calendar_df, config.holding_days
-    )
+    holdings_df = build_cohorts(sized_df, traded_legs_df, context.calendar_df, config)
     marked_df = pnl_module.attach_marks(holdings_df, marks_df)
+    if config.hold_to_expiry:
+        marked_df = pnl_module.apply_expiry_settlement(marked_df)
     kept_df = pnl_module.truncate_at_failure(marked_df, context.splits_df)
     diagnostics["marks_dropped_frac"] = round(1 - kept_df.height / max(marked_df.height, 1), 4)
 
     by_cohort = pnl_module.compute_pnl(
-        kept_df, context.underlying_df, config.hedge_delta, config.spread_cost_fraction
+        kept_df, context.underlying_df, config.hedge_delta, config.spread_cost_fraction,
+        charge_exit_cost=not config.hold_to_expiry,
     )
 
-    # Entry day carries no P&L; it is the mark the first change is measured from.
-    live = by_cohort.filter(pl.col("k") > 0)
+    # The entry day is kept, not dropped. It carries no market P&L by
+    # construction — `d_mid` and the prior delta are both null there, so the
+    # option and hedge legs are zero — but it is where the entry half of the
+    # bid-ask cost is booked. Filtering it out silently charged only the exit
+    # crossing, which understated the cost of a round trip by half and made
+    # hold-to-expiry (entry-only) look free.
+    live = by_cohort
 
     daily_pnl = (
         live.group_by("mark_date")
@@ -307,7 +336,17 @@ def run(config: BacktestConfig, context: BacktestContext) -> BacktestResult:
     )
     # Overlapping cohorts mean h are live at once; divide so the reported series
     # is the P&L of one book run at the target vega, not h books stacked.
-    scale = 1.0 / config.holding_days
+    # Overlapping cohorts mean several are live at once; divide so the series
+    # is one book at the target vega rather than N books stacked. Held to
+    # expiry the count is the realised life of a cohort, not `holding_days`.
+    live_cohorts = (
+        float(live.group_by("mark_date").agg(
+            pl.struct("formation_date", "symbol").n_unique().alias("n")
+        )["n"].mean() / max(diagnostics["mean_names_per_side"] * 2, 1.0))
+        if config.hold_to_expiry else float(config.holding_days)
+    )
+    diagnostics["mean_live_cohorts"] = round(live_cohorts, 1)
+    scale = 1.0 / max(live_cohorts, 1.0)
     daily_pnl = daily_pnl.with_columns(
         [
             pl.col(c) * scale
@@ -316,22 +355,22 @@ def run(config: BacktestConfig, context: BacktestContext) -> BacktestResult:
         ]
     )
 
+    decile_marked_df = pnl_module.attach_marks(
+        build_cohorts(
+            size_all_quantiles(ranked_df, config), ranked_legs_df, context.calendar_df, config
+        ),
+        marks_df,
+    )
+    if config.hold_to_expiry:
+        decile_marked_df = pnl_module.apply_expiry_settlement(decile_marked_df)
     decile_pnl = (
         pnl_module.compute_pnl(
-            pnl_module.truncate_at_failure(
-                pnl_module.attach_marks(
-                    pnl_module.build_holdings(
-                        size_all_quantiles(ranked_df, config), ranked_legs_df, context.calendar_df, config.holding_days
-                    ),
-                    marks_df,
-                ),
-                context.splits_df,
-            ),
+            pnl_module.truncate_at_failure(decile_marked_df, context.splits_df),
             context.underlying_df,
             config.hedge_delta,
             config.spread_cost_fraction,
+            charge_exit_cost=not config.hold_to_expiry,
         )
-        .filter(pl.col("k") > 0)
         .group_by("mark_date", "quantile")
         .agg((pl.col("total_pnl").sum() * scale).alias("pnl"))
         .rename({"mark_date": "date"})

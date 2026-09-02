@@ -79,6 +79,85 @@ def build_holdings(
     )
 
 
+def build_holdings_to_expiry(
+    sized_df: pl.DataFrame,
+    legs_df: pl.DataFrame,
+    calendar_df: pl.DataFrame,
+) -> pl.DataFrame:
+    """Expand each position and hold it until its contract expires.
+
+    The alternative to a fixed holding period, and the cheaper one: a position
+    carried to expiration settles at intrinsic rather than being sold, so it
+    crosses the quoted spread once instead of twice. Since spread is the
+    binding constraint on this kind of strategy, halving the number of
+    crossings is worth more than any signal improvement measured so far.
+
+    The holding period is then whatever the tenor implies — a 60-day contract
+    is held about 60 days — so this cannot be combined with a holding-period
+    sweep. That is the trade being made.
+    """
+    positions = sized_df.select(
+        pl.col("date").alias("formation_date"), "symbol", "quantity", "side", "quantile", "score"
+    )
+    legs = legs_df.select(
+        pl.col("date").alias("formation_date"),
+        "symbol", "expiration", "strike", "right", "ratio",
+    )
+    cohorts = positions.join(legs, on=["formation_date", "symbol"], how="inner")
+
+    # The last trading day at or before expiration. Expiration itself is a
+    # trading day for listed equity options, but asof-joining is robust to a
+    # holiday and to the calendar ending before a long-dated contract expires.
+    sessions = calendar_df.sort("date")
+    cohorts = (
+        cohorts.join(
+            sessions.select(pl.col("date").alias("formation_date"), pl.col("t").alias("t0")),
+            on="formation_date",
+            how="inner",
+        )
+        .sort("expiration")
+        .join_asof(
+            sessions.select(pl.col("date").alias("expiration"), pl.col("t").alias("t_last")),
+            on="expiration",
+            strategy="backward",
+        )
+        .filter(pl.col("t_last") >= pl.col("t0"))
+    )
+
+    return (
+        cohorts.with_columns(
+            pl.int_ranges(0, pl.col("t_last") - pl.col("t0") + 1).alias("k")
+        )
+        .explode("k")
+        .with_columns((pl.col("t0") + pl.col("k")).alias("t"))
+        .join(sessions.select("t", pl.col("date").alias("mark_date")), on="t", how="inner")
+        .drop("t_last")
+    )
+
+
+def apply_expiry_settlement(marked_df: pl.DataFrame) -> pl.DataFrame:
+    """Mark a contract at intrinsic value on its expiration date.
+
+    On the last day the quote is unreliable and irrelevant: the position is
+    not sold, it settles. Using intrinsic makes the final mark exact rather
+    than a wide two-sided quote on a contract nobody is trading any more.
+    """
+    expiring = pl.col("mark_date") == pl.col("expiration")
+    intrinsic = (
+        pl.when(pl.col("right") == "CALL")
+        .then((pl.col("underlying_price") - pl.col("strike")).clip(lower_bound=0.0))
+        .otherwise((pl.col("strike") - pl.col("underlying_price")).clip(lower_bound=0.0))
+    )
+    return marked_df.with_columns(
+        pl.when(expiring & pl.col("underlying_price").is_not_null())
+        .then(intrinsic)
+        .otherwise(pl.col("mid"))
+        .alias("mid"),
+        # A settled contract has no delta to hedge into the next day.
+        pl.when(expiring).then(0.0).otherwise(pl.col("delta")).alias("delta"),
+    )
+
+
 def attach_marks(holdings_df: pl.DataFrame, marks_df: pl.DataFrame) -> pl.DataFrame:
     """Join each held leg to its quote on each mark date."""
     marks = marks_df.select(
@@ -129,7 +208,7 @@ def truncate_at_failure(marked_df: pl.DataFrame, splits_df: pl.DataFrame) -> pl.
     return marked_df.join(good, on=[*cohort, "mark_date"], how="inner")
 
 
-def spread_costs(legs: pl.DataFrame, fraction: float) -> pl.DataFrame:
+def spread_costs(legs: pl.DataFrame, fraction: float, charge_exit: bool = True) -> pl.DataFrame:
     """Charge `fraction` of the quoted spread on entry and on exit.
 
     `fraction = 0.5` is the usual assumption: you cross half the spread to get
@@ -141,6 +220,10 @@ def spread_costs(legs: pl.DataFrame, fraction: float) -> pl.DataFrame:
     uses the quote on the last day the cohort was marked. That matters here —
     single-name option spreads widen exactly when the position is being closed
     in a stressed tape.
+
+    `charge_exit=False` is the hold-to-expiry case: the position is not sold,
+    it settles at intrinsic, so only the entry crossing is paid. That halves
+    the bill, which is the whole point of holding to expiry.
 
     Nothing is charged on the delta hedge. Stock spreads are two to three
     orders of magnitude tighter than these option spreads, so they would not
@@ -157,11 +240,11 @@ def spread_costs(legs: pl.DataFrame, fraction: float) -> pl.DataFrame:
         ((pl.col("ask") - pl.col("bid")).clip(lower_bound=0.0) * fraction
          * pl.col("units").abs() * SHARES_PER_CONTRACT).alias("edge_cost")
     )
+    charged = (pl.col("k") == pl.col("k_entry"))
+    if charge_exit:
+        charged = charged | (pl.col("k") == pl.col("k_exit"))
     return marked.with_columns(
-        pl.when((pl.col("k") == pl.col("k_entry")) | (pl.col("k") == pl.col("k_exit")))
-        .then(pl.col("edge_cost"))
-        .otherwise(0.0)
-        .alias("cost")
+        pl.when(charged).then(pl.col("edge_cost")).otherwise(0.0).alias("cost")
     ).drop("k_entry", "k_exit", "edge_cost")
 
 
@@ -170,6 +253,7 @@ def compute_pnl(
     underlying_df: pl.DataFrame,
     hedge_delta: bool,
     spread_cost_fraction: float = 0.0,
+    charge_exit_cost: bool = True,
 ) -> pl.DataFrame:
     """Daily dollar P&L per (cohort, mark date), split into option and hedge.
 
@@ -196,7 +280,7 @@ def compute_pnl(
         )
     )
     legs = (
-        spread_costs(legs, spread_cost_fraction)
+        spread_costs(legs, spread_cost_fraction, charge_exit_cost)
         if spread_cost_fraction
         else legs.with_columns(pl.lit(0.0).alias("cost"))
     )

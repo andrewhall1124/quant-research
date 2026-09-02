@@ -331,6 +331,42 @@ def plot_earnings(profile_df: pl.DataFrame, filename: str) -> None:
     plt.close(figure)
 
 
+def run_expiry_grid(context) -> tuple[pl.DataFrame, list]:
+    """Hold each position to expiration instead of selling it after N days.
+
+    The one lever whose effect is arithmetic rather than empirical: a settled
+    position crosses the quoted spread once, not twice, so the cost of a round
+    trip halves. On a strategy whose binding constraint is spread, that is
+    worth more than anything the signal work achieved.
+
+    What it costs is that the holding period becomes the tenor, and §5 showed
+    gross P&L per day decaying with hold length. The grid is over tenor
+    because that is now the same choice as the holding period.
+    """
+    results = []
+    for target_dte, dte_error in TENOR_GRID:
+        structure = AtmStraddle(target_dte=target_dte, max_dte_error=dte_error, max_moneyness=0.05)
+        for floor in (25, 100, 250):
+            for extra, tag in (((), ""), ((ExcludeEarningsBeforeExpiry(),), " no-earn")):
+                for fraction in (0.0, NET_COST_FRACTION):
+                    config = baseline_config(
+                        structure=structure,
+                        eligibility=BASE_FILTERS + (MinOpenInterest(floor),) + extra,
+                        hold_to_expiry=True,
+                        spread_cost_fraction=fraction,
+                        label=f"{target_dte}d expiry oi>={floor}{tag} cost={fraction:g}",
+                    )
+                    try:
+                        results.append(run(config, context))
+                    except ValueError as error:
+                        print(f"  {config.label}: skipped ({error})", flush=True)
+                        continue
+                    stats = metrics.summarize(results[-1].daily_pnl, target_dte)
+                    print(f"  {config.label}: sharpe {stats['sharpe_annual']:6.2f}"
+                          f" days {results[-1].diagnostics['formation_days']}", flush=True)
+    return metrics.compare(results), results
+
+
 def run_earnings_grid(context) -> tuple[pl.DataFrame, list]:
     """Split the strategy on whether an announcement falls inside the contract.
 
@@ -600,6 +636,8 @@ def main() -> None:
     tenor_df, tenor_results = run_tenor_grid(context)
     print("turnover grid (120-day contracts held longer)")
     turnover_df, turnover_results = run_turnover_grid(context)
+    print("hold-to-expiry grid")
+    expiry_df, expiry_results = run_expiry_grid(context)
     print("earnings partition")
     earnings_df, earnings_results = run_earnings_grid(context)
     profile_df = earnings_profile(context)
@@ -613,6 +651,7 @@ def main() -> None:
     tenor_df.write_csv(RESULTS / "tenor_grid.csv")
     turnover_df.write_csv(RESULTS / "turnover_grid.csv")
     earnings_df.write_csv(RESULTS / "earnings_grid.csv")
+    expiry_df.write_csv(RESULTS / "expiry_grid.csv")
     profile_df.write_csv(RESULTS / "earnings_profile.csv")
     decile_df.write_csv(RESULTS / "decile_monotonicity.csv")
     baseline.daily_pnl.write_csv(RESULTS / "baseline_daily_pnl.csv")
@@ -643,6 +682,10 @@ def main() -> None:
     print("\n=== turnover: 120-day contracts held longer ===")
     print(turnover_df.select("label", "formation_days", "mean_daily_pnl", "t_stat_nw",
                              "sharpe_annual", "total_pnl", "break_even_spread_frac"))
+    print("\n=== hold to expiry: break-even by tenor and screen ===")
+    print(expiry_df.filter(pl.col("label").str.contains("cost=0.5"))
+          .select("label", "formation_days", "sharpe_annual", "break_even_spread_frac")
+          .sort("break_even_spread_frac", descending=True))
     print("\n=== earnings partition ===")
     print(earnings_df.select("label", "formation_days", "names_per_side", "mean_daily_pnl",
                              "t_stat_nw", "sharpe_annual", "break_even_spread_frac"))

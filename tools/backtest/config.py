@@ -38,6 +38,12 @@ class BacktestConfig:
     long_quantile: int = 0  # lowest score
     short_quantile: int = -1  # highest score; -1 means n_quantiles - 1
     holding_days: int = 21
+    # Hold each position until its contract expires instead of for
+    # `holding_days`. A settled position crosses the quoted spread once rather
+    # than twice, which on a strategy whose binding constraint is spread is
+    # worth more than any signal improvement. The holding period then follows
+    # from the tenor, so this and a holding-period sweep are alternatives.
+    hold_to_expiry: bool = False
     gross_vega_per_side: float = 10_000.0
     hedge_delta: bool = True
     # Fraction of the quoted option spread paid on entry and again on exit.

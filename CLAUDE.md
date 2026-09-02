@@ -169,6 +169,13 @@ A study may cache an expensive intermediate under its own `results/` — as
 - Report what the sample cannot establish, not just what it shows. The
   2024-2025 window has one dominant shock (April 2025), so point estimates are
   clean and pairwise significance usually is not.
+- **Charge costs on the entry day, not just the exit.** `research/backtest`
+  booked the entry half of the spread on the formation date and then dropped
+  that date from the reported series, because it carries no market P&L — so
+  only the exit crossing was charged and every break-even figure came out 2x
+  too optimistic. It surfaced only when a hold-to-expiry mode (entry cost only)
+  reported infinite break-even. Any cost model needs a test that ties total
+  spend to `crossings x fraction x quoted spread x contracts`.
 
 ### Findings so far
 
@@ -196,8 +203,15 @@ tradeability is quoted spread per dollar of vega, `(ask - bid) * 100 / vega`
 (`cost_efficiency.py`): it falls 46% from 30-day to 120-day contracts (ATM vega
 grows as sqrt(T), spreads are tick-driven) and another 2.5x from the thinnest
 to the richest OI bucket, while underlying price does not move it at all. The
-respec takes break-even from 0.146 to 0.393 against the 0.5 needed — still
-untradeable, but off by 1.3x rather than 3.4x. Holding longer does not close
+respec takes break-even from 0.084 to 0.886 against the 0.5 needed, and the
+change that closes the gap is **holding to expiry**: a settled position crosses
+the quoted spread once rather than twice, which is arithmetic rather than a
+hypothesis (verified: raw spend $11.6M sold-to-close against $5.81M
+held-to-expiry, ratio exactly 2.0). Three cells clear the bar and post the only
+positive net Sharpes in the study — but the best rests on 66 formation dates at
+a ~60-day hold, about *one* independent observation, and is the maximum of ~145
+configurations searched on one year. Mechanically sound, statistically
+worthless; it needs the multi-year pull before anyone acts on it. Holding longer does not close
 the rest: the signal has a half-life, so gross P&L per day decays about as fast
 as turnover cost falls. **The earnings calendar explains the tenor result**:
 the fraction of contracts with an announcement before expiry runs 0.07 to 0.75
