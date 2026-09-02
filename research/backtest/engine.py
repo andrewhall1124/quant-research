@@ -23,6 +23,7 @@ the contract actually being traded, so signal and instrument cannot drift apart.
 
 from dataclasses import dataclass, field
 from datetime import date
+from pathlib import Path
 
 import polars as pl
 
@@ -75,6 +76,8 @@ def build_context(
     burn_in: int = 120,
     forecast_start: date | None = None,
     selection_path=None,
+    forecast_cache=None,
+    refresh: bool = False,
 ) -> BacktestContext:
     """Load the selection panel and fit the vol forecasts.
 
@@ -93,12 +96,22 @@ def build_context(
     if end is not None:
         selection_df = selection_df.filter(pl.col("date") <= end)
 
-    # Only names that appear in the selection panel can ever be traded, so
-    # fitting a model for anything else is wasted work.
-    tradeable = selection_df["symbol"].unique()
-    returns_df = build_returns(forecast_start, end).filter(pl.col("symbol").is_in(tradeable))
-    print(f"context: fitting forecasts on {returns_df['symbol'].n_unique()} names", flush=True)
-    forecasts_df = build_forecasts(returns_df, horizon=horizon, burn_in=burn_in)
+    # Fitting GARCH and ARCH at every origin for 500 names is the one slow
+    # step in layer 2, so it is cached like `single_name_vol/panel.parquet`:
+    # a research artefact, rebuilt with `refresh`, never written to data_store.
+    cache_path = Path(forecast_cache) if forecast_cache else panel_module.PANEL_DIR / "forecasts.parquet"
+    if cache_path.exists() and not refresh:
+        forecasts_df = pl.read_parquet(cache_path)
+        print(f"context: forecasts from cache ({forecasts_df['symbol'].n_unique()} names)", flush=True)
+    else:
+        # Only names that appear in the selection panel can ever be traded, so
+        # fitting a model for anything else is wasted work.
+        tradeable = selection_df["symbol"].unique()
+        returns_df = build_returns(forecast_start, end).filter(pl.col("symbol").is_in(tradeable))
+        print(f"context: fitting forecasts on {returns_df['symbol'].n_unique()} names", flush=True)
+        forecasts_df = build_forecasts(returns_df, horizon=horizon, burn_in=burn_in)
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        forecasts_df.write_parquet(cache_path)
 
     underlying_df = pnl_module.load_hedge_prices(forecast_start, end)
     splits_df = underlying_df.filter(pl.col("split_ratio") != 1.0).select(

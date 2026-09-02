@@ -197,3 +197,37 @@ def load_marks_panel(path: Path = MARKS_PATH) -> pl.DataFrame:
             f"{path} not found. It is built by the engine on first run."
         )
     return pl.read_parquet(path)
+
+
+def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--refresh", action="store_true", help="rebuild even if cached")
+    parser.add_argument("--start", type=date.fromisoformat, default=None)
+    parser.add_argument("--end", type=date.fromisoformat, default=None)
+    parser.add_argument("--min-dte", type=int, default=18)
+    parser.add_argument("--max-dte", type=int, default=45)
+    parser.add_argument("--max-moneyness", type=float, default=0.08)
+    parser.add_argument("--limit", type=int, default=None, help="first N symbols, for a smoke test")
+    args = parser.parse_args()
+
+    if SELECTION_PATH.exists() and not args.refresh:
+        print(f"{SELECTION_PATH} exists; pass --refresh to rebuild")
+        return
+
+    symbols = paths.available_option_symbols(greeks=True)
+    if args.limit:
+        symbols = symbols[: args.limit]
+    build_selection_panel(
+        symbols=symbols,
+        start=args.start,
+        end=args.end,
+        min_dte=args.min_dte,
+        max_dte=args.max_dte,
+        max_moneyness=args.max_moneyness,
+    )
+
+
+if __name__ == "__main__":
+    main()
