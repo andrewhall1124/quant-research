@@ -16,6 +16,10 @@ from data_access_layer import paths
 # SPXW is the weekly root on the same underlying as SPX.
 INDEX_ROOT_TO_SPOT = {"SPX": "SPX", "SPXW": "SPX", "XSP": "XSP"}
 
+# Mirrors data_pipelines.common.TICKER_OVERRIDES["stock"]. Duplicated rather
+# than imported so the access layer does not depend on the pipeline package.
+THETA_STOCK_OVERRIDES = {"BNY": "BK"}
+
 
 class MissingDataset(FileNotFoundError):
     """Raised with the pipeline command that would create the missing file."""
@@ -58,14 +62,103 @@ def load_underlying(
     symbols: str | list[str] | None = None,
     start: date | None = None,
     end: date | None = None,
+    drop_zero_prices: bool = True,
+    with_actions: bool = False,
+    in_universe: bool = False,
 ) -> pl.DataFrame:
-    """EOD stock prices. The raw `created` timestamp becomes a plain `date`."""
+    """EOD stock prices. The raw `created` timestamp becomes a plain `date`.
+
+    `drop_zero_prices` removes the final row ThetaData emits for a delisted
+    name, which carries open = high = low = close = 0 (sometimes with real
+    volume attached) rather than being absent. Left in, it books a -100% day.
+
+    `with_actions` adds `split_ratio` and `dividend` for that date from the
+    corporate-actions table, so returns can be adjusted at the point of use.
+
+    `in_universe` keeps only (symbol, date) pairs that were actually in the
+    index that day. Besides being what a universe-based study wants, it drops
+    the rows ThetaData returns for a symbol *before* its listing: SOLS has four
+    Jan-Apr 2025 rows priced at $0.0001, with volume, months before it began
+    trading on 2025-10-30.
+    """
     frame = (
         pl.scan_parquet(require(paths.UNDERLYING, "data_pipelines.underlying"))
         .with_columns(pl.col("created").dt.date().alias("date"))
         .select("date", "symbol", "open", "high", "low", "close", "volume", "bid", "ask")
     )
+    if drop_zero_prices:
+        frame = frame.filter(pl.col("close") > 0)
+    if in_universe:
+        # universe.parquet is spelled in Wikipedia tickers; underlying.parquet
+        # in ThetaData's, so the membership table has to be mapped across.
+        members = (
+            load_universe()
+            .with_columns(
+                pl.col("ticker").replace(THETA_STOCK_OVERRIDES).alias("symbol")
+            )
+            .select("date", "symbol")
+            .unique()
+        )
+        frame = frame.join(members.lazy(), on=["date", "symbol"], how="semi")
+    if with_actions:
+        actions_df = load_corporate_actions()
+        splits_df = (
+            actions_df.filter(pl.col("action") == "split")
+            .select("symbol", "date", pl.col("value").alias("split_ratio"))
+        )
+        dividends_df = (
+            actions_df.filter(pl.col("action") == "dividend")
+            .group_by("symbol", "date")
+            .agg(pl.col("value").sum().alias("dividend"))
+        )
+        frame = (
+            frame.join(splits_df.lazy(), on=["symbol", "date"], how="left")
+            .join(dividends_df.lazy(), on=["symbol", "date"], how="left")
+            .with_columns(
+                pl.col("split_ratio").fill_null(1.0),
+                pl.col("dividend").fill_null(0.0),
+            )
+        )
     return in_window(only_symbols(frame, symbols), start, end).sort("date", "symbol").collect()
+
+
+def load_corporate_actions(
+    kind: str | None = None,
+    symbols: str | list[str] | None = None,
+    start: date | None = None,
+    end: date | None = None,
+) -> pl.DataFrame:
+    """Splits and dividends from Yahoo. `kind` is "split", "dividend" or None.
+
+    Split values are ex-date ratios (ORLY 2025-06-10 is 15.0). Yahoo also
+    encodes spinoff adjustment factors here as non-integer "splits" (DD 2.39 on
+    the Qnity spinoff), which is what you want for the same reason.
+    """
+    frame = pl.scan_parquet(
+        require(paths.CORPORATE_ACTIONS, "data_pipelines.corporate_actions")
+    )
+    if kind is not None:
+        frame = frame.filter(pl.col("action") == kind)
+    return in_window(only_symbols(frame, symbols), start, end).sort("symbol", "date").collect()
+
+
+def load_ticker_check(status: str | list[str] | None = None) -> pl.DataFrame:
+    """Per-symbol agreement between ThetaData and Yahoo closes.
+
+    Status is "ok", "mismatch", "thin_overlap", "yahoo_missing" or
+    "theta_missing". Anything but "ok" means the two vendors disagree about
+    what that symbol is, or Yahoo has no usable history for it; those names
+    should not carry a split adjustment you trust.
+    """
+    frame = pl.scan_parquet(
+        require(paths.TICKER_CHECK, "data_pipelines.corporate_actions")
+    )
+    return only_symbols(frame, status, "status").sort("status", "symbol").collect()
+
+
+def trusted_symbols() -> list[str]:
+    """Symbols whose split adjustment has been verified against a second source."""
+    return load_ticker_check("ok")["symbol"].to_list()
 
 
 def load_indices(
@@ -164,9 +257,11 @@ def load_option_chain(
         if max_moneyness is not None:
             frame = frame.filter(pl.col("moneyness").abs() <= max_moneyness)
 
+    # Sort before narrowing: the sort keys are not necessarily in `columns`.
+    frame = frame.sort("date", "expiration", "strike", "right")
     if columns is not None:
         frame = frame.select(columns)
-    return frame.sort("date", "expiration", "strike", "right").collect()
+    return frame.collect()
 
 
 def spot_series(symbol: str, index: bool = False) -> pl.DataFrame:
@@ -177,6 +272,23 @@ def spot_series(symbol: str, index: bool = False) -> pl.DataFrame:
     else:
         levels_df = load_underlying(symbol.upper())
     return levels_df.select("date", pl.col("close").alias("spot"))
+
+
+def split_adjusted_return(
+    close: str = "close", split_ratio: str = "split_ratio"
+) -> pl.Expr:
+    """Close-to-close simple return with the split applied on its ex-date.
+
+    Only a split falling *between* the two closes matters to a return, so this
+    needs the ex-date ratio rather than a cumulative back-adjustment factor —
+    which also means a split after the sample ends is correctly irrelevant.
+    Use over a symbol partition:
+
+        prices_df.with_columns(split_adjusted_return().over("symbol"))
+    """
+    return (
+        pl.col(close) * pl.col(split_ratio) / pl.col(close).shift(1) - 1
+    ).alias("return")
 
 
 def realized_volatility(

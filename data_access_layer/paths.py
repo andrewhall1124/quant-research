@@ -19,6 +19,11 @@ YIELDS = DATA_STORE / "yields.parquet"
 RATES = DATA_STORE / "rates.parquet"
 FRED_RATES = DATA_STORE / "fred_rates.parquet"
 
+# Splits and dividends from Yahoo, plus the per-symbol close-agreement check
+# that says which of those names can be trusted.
+CORPORATE_ACTIONS = DATA_STORE / "corporate_actions.parquet"
+TICKER_CHECK = DATA_STORE / "ticker_check.parquet"
+
 # One parquet per symbol; too large to keep in a single file.
 OPTIONS_DIR = DATA_STORE / "options_2025"
 INDEX_OPTIONS_DIR = DATA_STORE / "index_options_2025"
@@ -30,6 +35,8 @@ DATASETS = {
     "yields": YIELDS,
     "rates": RATES,
     "fred_rates": FRED_RATES,
+    "corporate_actions": CORPORATE_ACTIONS,
+    "ticker_check": TICKER_CHECK,
     "options": OPTIONS_DIR,
     "index_options": INDEX_OPTIONS_DIR,
 }

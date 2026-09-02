@@ -27,6 +27,7 @@ uv run python -m data_pipelines.universe      # point-in-time S&P 500 membership
 uv run python -m data_pipelines.underlying    # EOD stock prices for that universe
 uv run python -m data_pipelines.options       # EOD option chains for that universe
 uv run python -m data_pipelines.reference     # indices, VIX complex, yields, SOFR
+uv run python -m data_pipelines.corporate_actions  # splits + dividends (Yahoo), and a vendor cross-check
 uv run python -m data_pipelines.options --symbols SPX,SPXW,XSP \
     --output-dir data_store/index_options_2025
 ```
@@ -49,7 +50,8 @@ it is resumable and never holds a full year of chains in memory.
 import data_access_layer as dal
 
 dal.describe_store()                       # what is on disk, and what is missing
-prices_df = dal.load_underlying("AAPL", start=date(2025, 1, 1))
+prices_df = dal.load_underlying(with_actions=True, in_universe=True)
+returns_df = prices_df.with_columns(dal.split_adjusted_return().over("symbol"))
 levels_df = dal.load_index_closes(["SPX", "VIX", "VIX9D", "VIX3M"])   # wide
 chain_df  = dal.load_option_chain("SPXW", index=True, min_dte=25, max_dte=35,
                                   max_moneyness=0.05, with_spot=True)
@@ -68,6 +70,8 @@ figure, and a report:
 
 - [`research/volatility/`](research/volatility/) — do realized, ARCH, GARCH and
   implied volatility forecast forward realized and forward implied vol?
+- [`research/data_quality/`](research/data_quality/) — is the ThetaData EOD feed
+  good enough to build on, and what is already wrong with the panel on disk?
 
 ## ThetaData constraints
 
@@ -104,21 +108,75 @@ Options cost roughly 12x the underlying, because each request pulls a full
 chain rather than a single series. PRO's 4 threads would about halve the
 option wall time; nothing on offer makes it fast.
 
+## Corporate actions
+
+ThetaData serves **raw, unadjusted prices** and its client has no splits
+endpoint, so 2025 alone contains six splits that a naive return reads as a
+crash — ORLY 15:1 (-93%), NFLX 10:1, NOW 5:1, IBKR 4:1, TPL 3:1, FAST 2:1 —
+plus three delisted names (HES, JNPR, K) whose final row is
+`open = high = low = close = 0`, with volume attached, rather than absent.
+
+`corporate_actions.py` fills the gap from Yahoo, which is used for the split
+and dividend *calendar* only. Prices stay ThetaData's: the option quotes and
+the stock close are the same 17:15 ET snapshot, and mixing a second vendor's
+close into that breaks the one property that makes close-to-close option P&L
+trustworthy.
+
+Because Yahoo answers almost any symbol with *something*, every name is
+verified rather than trusted. ThetaData's raw closes are back-adjusted with the
+pulled splits and compared to Yahoo's own; agreement means the ticker mapping
+and the split factors are both right. Of 523 universe tickers, 507 agree, 10
+have no Yahoo history at all (Yahoo purges delisted names — HES, JNPR, K and
+DFS all 404, so it is *worse* than ThetaData there), 3 are absent from
+ThetaData, and 3 disagree. `dal.trusted_symbols()` returns the clean list and
+`dal.load_ticker_check()` says why the rest failed.
+
+Two gotchas found the hard way:
+
+- **Yahoo back-adjusts closes for every split up to today**, not up to the end
+  of the requested window, so a pull that stops at the end of the price panel
+  silently omits later splits and the whole name disagrees. BKNG's 25:1 on
+  2026-04-06 makes its 2025 closes look 25x too high. The pull always runs to
+  the present.
+- **Yahoo's price and split series can disagree with each other** for very
+  recent splits (MNST's 2026-08-11 2:1 is in its splits series but not applied
+  to its 2025 closes). The check flags this as `mismatch`, which is the right
+  outcome: a `mismatch` means "these two sources disagree about this symbol",
+  not necessarily "ThetaData is wrong".
+
+`split_adjusted_return()` applies the ex-date ratio between consecutive closes
+rather than a cumulative factor, which is both simpler and correct: only a
+split falling *between* two closes affects a return, so splits after the sample
+ends are properly irrelevant. `load_underlying(in_universe=True)` additionally
+restricts to point-in-time membership, which drops rows ThetaData returns for a
+symbol before it listed — SOLS has four Jan-Apr 2025 rows at $0.0001, with
+volume, months before it began trading on 2025-10-30.
+
+After all of it, the 2025 panel has seven daily moves above 35%, and every one
+is a real news event.
+
 ## Ticker symbology
 
-ThetaData's stock and option endpoints disagree, and getting this wrong is not
+Every vendor spells the universe differently, and getting this wrong is not
 always loud:
 
 - Options strip the dot from share classes (`BRK.B` -> `BRKB`, `BF.B` -> `BFB`);
   stocks keep it. Requesting the wrong spelling returns "No data found".
-- `BNY` must be mapped to `BK` for **both** asset classes. The stock endpoint
-  answers a `BNY` request with an unrelated ~$10 small-cap instead of an error,
-  so an unmapped `BNY` silently fills the dataset with the wrong instrument.
-  Sanity-check price levels when adding symbols.
+- Yahoo wants a dash instead (`BRK-B`, `BF-B`).
+- `BNY` must be mapped to `BK` for **both** ThetaData asset classes. The stock
+  endpoint answers a `BNY` request with an unrelated ~$10 small-cap instead of
+  an error, so an unmapped `BNY` silently fills the dataset with the wrong
+  instrument. Yahoo is the exact opposite — it serves the real company under
+  `BNY` and 404s on `BK` — which is why the override table is keyed by
+  destination rather than shared.
 - `NVR` trades but has no chain in ThetaData's 15,715-symbol option universe.
   `ECHO`, `MRSH` and `VMRK` are stale Wikipedia changes-table entries.
 
-All of this lives in `TICKER_OVERRIDES` / `UNAVAILABLE` in `data_pipelines/common.py`.
+All of this lives in `TICKER_OVERRIDES` / `UNAVAILABLE` in
+`data_pipelines/common.py`, keyed by `"stock"`, `"option"` and `"yahoo"`. The
+hand-written exclusion list only covers ThetaData; for Yahoo the equivalent is
+produced by the close-agreement check, because a list written by hand cannot
+anticipate a vendor that answers every symbol.
 
 ## Other asset classes
 

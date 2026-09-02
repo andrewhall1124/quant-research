@@ -35,15 +35,25 @@ where a dependency forces it (`arch`, `read_html`).
   either taken from the VIX complex (free, EOD) or inverted from option mids
   yourself. Server-confirmed: greeks and IV need STANDARD, open interest needs
   VALUE. `research/data_quality/analysis.py` re-probes this in a few seconds.
-- **Prices are raw, never adjusted.** `underlying_2025.parquet` holds six
-  unadjusted splits (ORLY 15:1, NFLX 10:1, NOW 5:1, IBKR 4:1, TPL 3:1, FAST
-  2:1), so a return off `close` books a -93% day on ORLY. The split session can
-  also be corrupt: NVDA's 2024-06-10 high is 195.95 against a real range near
-  117-123. The client exposes no splits endpoint despite the tier table listing
-  one.
+- **Prices are raw, never adjusted, and the client has no splits endpoint.**
+  Fixed by `data_pipelines/corporate_actions.py` (splits + dividends from
+  Yahoo). Use `load_underlying(with_actions=True, in_universe=True)` with
+  `split_adjusted_return()`, never a bare `close.diff()`. The split session
+  itself can still be corrupt: NVDA's 2024-06-10 high is 195.95 against a real
+  range near 117-123.
 - **Delisted names get a zero row, not a missing row.** HES 2025-07-18, JNPR
   2025-07-02, K 2025-12-11 each end with open=high=low=close=0 (HES with real
   volume attached). Zero, not null, so nothing downstream flags it.
+  `load_underlying` drops these by default.
+- **Yahoo back-adjusts to today, not to the window end.** A corporate-actions
+  pull that stops at the end of the price panel misses later splits and the
+  whole name then disagrees (BKNG 25:1 on 2026-04-06 makes 2025 look 25x high).
+  `corporate_actions.py` always runs to the present; do not add an `--end`.
+- **Never take Yahoo prices as spot.** The one property worth protecting is
+  that the option quotes and the stock close are the same 17:15 ET snapshot.
+  Yahoo is the split/dividend calendar only, and every name is verified with
+  `dal.trusted_symbols()` because Yahoo answers almost any symbol with
+  something (VMRK returns a price that does not match the name it reports).
 - **Untraded option contracts have close=0, not null.** 53% of contract-days
   never trade, and their OHLC is 0.0. Filter on `volume > 0` or use the mid.
   The EOD chain also has no `date` and no underlying price - the session date
@@ -92,7 +102,8 @@ so an interrupted pull can just be re-run.
 
 ### Findings so far
 
-`research/data_quality/` — the feed itself is near-spotless: over 114M stored
+`research/data_quality/` — audit behind the corporate-actions work. The feed
+itself is near-spotless: over 114M stored
 contract-days, 0.008% crossed quotes, 0.004% missing quotes, no nulls, no
 duplicates, no negative prices. Carry-adjusted put-call parity on ATM pairs
 prices back to the cash close within 3-8 bp for liquid names, so the quote legs
