@@ -179,10 +179,16 @@ A study may cache an expensive intermediate under its own `results/` — as
 
 ### Findings so far
 
-`research/vrp_cross_section/` — the first strategy study, and the first user of
-`tools/backtest/`. Buy the S&P 500 names whose options are cheap against their
-own 60-session implied-vol history, sell the expensive ones, vega-weighted,
-delta-hedged, held to expiry. Gross Sharpe 3.15 (t=2.91), net of half the
+`research/single_name_iv_reversion/` — the first strategy study, and the first
+user of `tools/backtest/`. Buy the S&P 500 names whose implied vol is low
+against their own 60-session history, sell the high ones, vega-weighted,
+delta-hedged, held to expiry. **Not a variance-premium strategy**, despite
+using the instrument that would harvest one: a first-order greek attribution
+puts two thirds of the option P&L in vega (implied vol moving) against a third
+in gamma+theta (realized undershooting implied), the book is vega-neutral so
+the premium's level cancels by construction, and `IV - E[RV]` — the premium
+measured directly — ranks last of four signals. It is implied-vol mean
+reversion, and naming it after the premium would have been wrong. Gross Sharpe 3.15 (t=2.91), net of half the
 quoted spread 1.35 (t=1.12), break-even 0.886 — it can pay 89% of the quoted
 bid-ask per crossing. On 66 formation dates at a 60-day hold, which is about
 *one* independent observation, and it is the survivor of ~145 configurations,
@@ -273,7 +279,7 @@ $80, Pro $160 /mo. First access date by tier: options FREE 2023-06-01, VALUE
   interest on its thinner leg, and quotes at 19.8% of mid (36.8% at the 75th
   percentile). Any strategy study has to price execution before it reports a
   Sharpe, and any cross-sectional sort has to check how many names survive its
-  screen — see `research/vrp_cross_section/`.
+  screen — see `research/single_name_iv_reversion/`.
 - **Open interest is cheap.** `/v3/option/history/open_interest` is badged
   Value/Standard/Pro (the subscription table claims FREE); it is not what
   forces the tier.

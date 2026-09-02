@@ -85,7 +85,7 @@ class IvZScoreSignal:
     Removes the persistent cross-sectional level — a high-vol name always looks
     rich in absolute terms — and sorts on the time-series deviation instead.
     Needs no return model at all, so it is the variant least exposed to
-    forecast error, which is why `research/vrp_cross_section/` leads with it.
+    forecast error, which is why `research/single_name_iv_reversion/` leads with it.
 
     Two properties worth being explicit about:
 

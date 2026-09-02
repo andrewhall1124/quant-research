@@ -163,7 +163,8 @@ def attach_marks(holdings_df: pl.DataFrame, marks_df: pl.DataFrame) -> pl.DataFr
     marks = marks_df.select(
         pl.col("date").alias("mark_date"),
         "symbol", "expiration", "strike", "right",
-        "mid", "bid", "ask", "delta", "vega", "implied_vol", "underlying_price",
+        "mid", "bid", "ask", "delta", "gamma", "theta", "vega",
+        "implied_vol", "underlying_price",
     )
     return holdings_df.join(
         marks,
@@ -272,11 +273,37 @@ def compute_pnl(
         )
         .with_columns(
             (pl.col("mid") - pl.col("mid").shift(1).over(leg)).alias("d_mid"),
+            # Yesterday's greeks against today's move: the standard first-order
+            # attribution. Everything they miss lands in the residual.
+            pl.col("vega").shift(1).over(leg).alias("prior_vega"),
+            pl.col("gamma").shift(1).over(leg).alias("prior_gamma"),
+            pl.col("theta").shift(1).over(leg).alias("prior_theta"),
+            (pl.col("implied_vol") - pl.col("implied_vol").shift(1).over(leg)).alias("d_iv"),
+            (pl.col("underlying_price") - pl.col("underlying_price").shift(1).over(leg)).alias("d_underlying"),
+            (pl.col("mark_date") - pl.col("mark_date").shift(1).over(leg))
+            .dt.total_days().alias("days_elapsed"),
         )
         .with_columns(
             (pl.col("units") * pl.col("d_mid").fill_null(0.0) * SHARES_PER_CONTRACT).alias("option_pnl"),
             (pl.col("units") * pl.col("delta") * SHARES_PER_CONTRACT).alias("position_delta"),
             (pl.col("units") * pl.col("vega")).alias("position_vega"),
+            # Attribution. `vega` as stored is dollars per contract per vol
+            # point and `implied_vol` is a decimal, so the change needs the
+            # same x100 the per-share quantities do. Theta is per share per
+            # calendar day, and the gap between marks is three days over a
+            # weekend.
+            (
+                pl.col("units") * pl.col("prior_vega").fill_null(0.0)
+                * pl.col("d_iv").fill_null(0.0) * SHARES_PER_CONTRACT
+            ).alias("vega_pnl"),
+            (
+                pl.col("units") * pl.col("prior_theta").fill_null(0.0)
+                * pl.col("days_elapsed").fill_null(0).cast(pl.Float64) * SHARES_PER_CONTRACT
+            ).alias("theta_pnl"),
+            (
+                pl.col("units") * 0.5 * pl.col("prior_gamma").fill_null(0.0)
+                * pl.col("d_underlying").fill_null(0.0) ** 2 * SHARES_PER_CONTRACT
+            ).alias("gamma_pnl"),
         )
     )
     legs = (
@@ -289,6 +316,9 @@ def compute_pnl(
         legs.group_by([*cohort, "mark_date", "k"])
         .agg(
             pl.col("option_pnl").sum(),
+            pl.col("vega_pnl").sum(),
+            pl.col("theta_pnl").sum(),
+            pl.col("gamma_pnl").sum(),
             pl.col("cost").sum(),
             pl.col("position_delta").sum(),
             pl.col("position_vega").sum(),

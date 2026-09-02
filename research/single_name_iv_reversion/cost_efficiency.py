@@ -15,7 +15,7 @@ The finding: ATM vega grows as sqrt(T) while quoted spreads are closer to
 tick-driven, so tenor moves this by ~46% and open interest by another ~2.5x,
 while underlying price does not move it at all.
 
-    uv run python -m research.vrp_cross_section.cost_efficiency
+    uv run python -m research.single_name_iv_reversion.cost_efficiency
 """
 
 import polars as pl

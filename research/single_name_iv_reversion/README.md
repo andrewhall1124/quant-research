@@ -1,8 +1,17 @@
-# research/vrp_cross_section
+# research/single_name_iv_reversion
 
-A cross-sectional volatility strategy on S&P 500 single names. Buy the names
-whose options are cheap relative to their own recent history, sell the ones
-that are expensive, vega-weight both sides, delta-hedge daily, hold to expiry.
+Cheap against expensive implied vol, in the cross-section of S&P 500 single
+names. Buy the names whose implied volatility is low relative to their own
+recent history, sell the ones where it is high, vega-weight both sides,
+delta-hedge daily, hold to expiry.
+
+The bet is that implied volatility mean-reverts. It is **not** a variance risk
+premium strategy, despite using the instrument that would harvest one: two
+thirds of the option P&L is vega — money made when implied vol moves — against
+a third from gamma and theta, the channel that pays when realized volatility
+undershoots implied. The premium is the smaller half, the book is vega-neutral
+so the premium's level cancels by construction, and `IV - E[RV]` — the premium
+measured directly — is the worst of the four signals tried.
 
 Findings, methods and intuition are in **[REPORT.md](REPORT.md)**.
 
@@ -15,9 +24,9 @@ one independent observation.
 ```bash
 uv run python -m data_pipelines.open_interest                     # ~3 hr, once
 uv run python -m tools.backtest.panel --refresh --max-dte 140     # ~10 min, cached
-uv run python -m research.vrp_cross_section.analysis \
+uv run python -m research.single_name_iv_reversion.analysis \
     --forecast-start 2023-06-01                                   # ~15 min
-uv run python -m research.vrp_cross_section.cost_efficiency       # ~2 min
+uv run python -m research.single_name_iv_reversion.cost_efficiency       # ~2 min
 ```
 
 `--forecast-start` reaches into `underlying_history.parquet` so the vol-model
@@ -34,6 +43,7 @@ enough for the 30/60/90/120-day grid.
 |---|---|
 | Universe | S&P 500 names with a listed chain, calendar 2025 |
 | Signal | implied vol vs the name's own 60-session history (z-score) |
+| Bet | that the z-score mean-reverts |
 | Instrument | ATM straddle, 60 days to expiry (±12), strike within 5% |
 | Screens | open interest ≥ 250, no earnings before expiry, vega ≥ $5, price ≥ $10 |
 | Portfolio | 10 deciles, long cheapest / short richest, $10k vega per side |
@@ -55,6 +65,7 @@ enough for the 30/60/90/120-day grid.
 | `results/earnings_partition.csv` | the universe split on earnings-before-expiry |
 | `results/exit_rule.csv` | sold-to-close against held-to-expiry |
 | `results/cost_curve.csv` | net P&L as execution gets worse |
+| `results/attribution.csv` | option P&L split into vega, theta and gamma — what names the strategy |
 | `figures/*.png` | regenerated on every run |
 
 Each experiment is the strategy with exactly one thing changed, so every row in

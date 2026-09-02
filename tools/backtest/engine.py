@@ -322,6 +322,9 @@ def run(config: BacktestConfig, context: BacktestContext) -> BacktestResult:
         live.group_by("mark_date")
         .agg(
             pl.col("option_pnl").sum(),
+            pl.col("vega_pnl").sum(),
+            pl.col("theta_pnl").sum(),
+            pl.col("gamma_pnl").sum(),
             pl.col("hedge_pnl").sum(),
             pl.col("cost").sum(),
             pl.col("gross_pnl").sum(),
@@ -350,7 +353,8 @@ def run(config: BacktestConfig, context: BacktestContext) -> BacktestResult:
     daily_pnl = daily_pnl.with_columns(
         [
             pl.col(c) * scale
-            for c in ["option_pnl", "hedge_pnl", "cost", "gross_pnl",
+            for c in ["option_pnl", "vega_pnl", "theta_pnl", "gamma_pnl",
+                      "hedge_pnl", "cost", "gross_pnl",
                       "total_pnl", "long_pnl", "short_pnl"]
         ]
     )

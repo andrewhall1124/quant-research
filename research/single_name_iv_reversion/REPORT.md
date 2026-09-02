@@ -1,7 +1,7 @@
-# Trading the cross-section of the variance risk premium
+# Cheap against expensive implied vol, in the cross-section of single names
 
-Buy the S&P 500 names whose options are cheap relative to their own recent
-history, sell the ones that are expensive, and hold each position until it
+Buy the S&P 500 names whose implied volatility is low relative to their own
+recent history, sell the ones where it is high, and hold each position until it
 expires.
 
 | | |
@@ -22,31 +22,75 @@ and would hold in any sample; the performance numbers are a hypothesis.
 
 ## 1. The idea
 
-Options are insurance, and insurance is sold at a markup. Implied volatility —
-the volatility number that makes an option's price come out right — is
-persistently higher than the volatility that actually gets realized over the
-option's life. The gap is the **variance risk premium**, and it is the
-compensation option sellers earn for absorbing somebody else's variance risk.
-`research/single_name_vol/` measures it as positive in 86-97% of S&P 500 names.
+Implied volatility — the volatility number that makes an option's price come
+out right — moves around a lot, and much of that movement reverses. A name
+whose options are suddenly pricing 45% vol when they normally price 30% has
+usually not permanently become a riskier company; more often the market has
+repriced its options and will reprice them back.
 
-Two ways to harvest it. You can sell volatility outright and collect the
-premium, which works until it does not — that is a short-carry position with a
-tail. Or you can trade the *dispersion* in the premium: at any moment some
-names charge more of a markup than others, and if that gap mean-reverts you can
-buy the cheap and sell the rich without taking a view on volatility overall.
+That is the bet: **implied volatility mean-reverts**, so buy it where it is low
+relative to the name's own history and sell it where it is high.
 
-This study does the second. It is a relative-value trade, deliberately
-constructed to have no exposure to the level of volatility, so that it profits
-when the cross-section converges rather than when volatility falls.
+**The signal is a 60-session z-score of each name's ATM implied vol against
+itself.** Measuring against its own history rather than against other names is
+the essential part. A utility always has lower implied vol than a biotech, so
+sorting on the raw level just buys utilities and sells biotech — and §3 shows
+that trade lost $200k in 2025. What matters is not whether a name is
+low-volatility but whether it is *low for itself*.
 
-**The signal is each name's implied vol measured against its own recent
-history**, a 60-session z-score. Not the level: a utility stock always has
-lower implied vol than a biotech, and sorting on the level just buys utilities
-and sells biotech. Not the textbook `IV − E[RV]` either — see §3. The z-score
-asks a narrower and more answerable question: *is this name charging more than
-it usually charges?*
+The position is **vega-neutral**, equal volatility exposure long and short, so
+it profits when the two sides converge rather than when volatility falls
+overall.
 
-## 2. How the backtest works
+### Why this is not called a variance risk premium strategy
+
+There is a well-documented premium in options: implied volatility exceeds
+subsequently realized volatility most of the time, and
+`research/single_name_vol/` measures it as positive in 86-97% of these names.
+A delta-hedged straddle held to expiry is the classic way to harvest it, and
+that is exactly the instrument used here — so the label is tempting.
+
+It is still the wrong one, for three reasons the study measures directly.
+
+**The P&L comes from the wrong channel.** Splitting the option leg into
+first-order greeks (§2a): two thirds is vega, the channel that pays when
+implied vol *moves*, against a third from gamma and theta, the channel that
+pays when realized volatility undershoots what was implied. The premium is the
+smaller half.
+
+**Vega-neutrality nets the premium out on purpose.** The premium's level is
+what a short-volatility book collects. This book holds equal vega long and
+short precisely so that level cancels.
+
+**And the premium itself is the worst signal tried.** `IV − E[RV]` is the
+variance risk premium definitionally, and it ranks last of four sorts (§3). If
+the strategy were harvesting the premium, measuring the premium directly would
+not be the least useful thing you could do.
+
+## 2a. Where the money comes from
+
+Gross, over the option leg:
+
+| channel | total | share of option leg |
+|---|---|---|
+| **vega** — implied vol moved | **$187,121** | **67.5%** |
+| theta — premium decayed | $62,314 | 22.5% |
+| gamma — realized variance captured | $56,022 | 20.2% |
+| residual (higher order) | −$28,192 | −10.2% |
+| **option leg** | **$277,265** | |
+| delta hedge | −$47,415 | |
+| **gross** | **$229,851** | |
+
+Theta and gamma are two sides of one trade: you pay theta for the variance an
+option implies and earn gamma on the variance that arrives, so their sum,
+**$118,336**, is the variance risk premium actually captured. Vega is something
+else — it pays when the market re-prices volatility, whatever subsequently gets
+realized — and at **$187,121** it is 1.6× larger and 81% of gross P&L.
+
+The attribution is first order, so a residual is expected; at about a tenth of
+the option leg it is nowhere near large enough to change the ranking.
+
+## 2b. How the backtest works
 
 Everything mechanical is in `tools/backtest/`; this section is what it does and
 why.
@@ -112,6 +156,8 @@ volatility level.
 
 **The textbook definition ranks worse than nothing.** `IV − E[RV]` is the
 canonical variance risk premium, and with a GARCH forecast it returns −0.19.
+This is the evidence in §1 that the strategy is not a premium trade: the
+premium, measured directly, is the least useful of the four sorts.
 The reason is visible in the sort: across deciles a GARCH forecast spans about
 36 volatility points where implied vol spans 13, so the ranking is driven by
 where the *model* is extrapolating hardest rather than by where the option is

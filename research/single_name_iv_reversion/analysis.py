@@ -1,12 +1,28 @@
-"""A cross-sectional volatility strategy on S&P 500 single names.
+"""Cheap against expensive implied vol, in the cross-section of single names.
 
-Every trading day, rank the universe on how expensive each name's option is
-relative to its own recent history, buy the cheapest decile against the
-richest, weight both sides equally by vega, delta-hedge daily, and hold each
-position until its contract expires.
+Every trading day, rank the S&P 500 on how expensive each name's implied
+volatility is relative to its *own* recent history, buy the cheapest decile
+against the richest, weight both sides equally by vega, delta-hedge daily, and
+hold each position until its contract expires.
+
+The bet is that implied volatility mean-reverts: a name trading well above its
+own recent level tends to come back down, and one trading below tends to come
+back up, relative to peers. `run_attribution` confirms that is where the money
+comes from — two thirds of the option P&L is vega, the channel that pays when
+implied vol moves, against a third from gamma and theta, the channel that pays
+when realized volatility undershoots what was implied.
+
+That distinction is why this study is not called a variance-risk-premium
+strategy. A delta-hedged straddle held to expiry *would* harvest the variance
+premium, and the premium is real — `research/single_name_vol/` measures it as
+positive in 86-97% of these names. But the position is deliberately
+vega-neutral, which nets the premium's level out, and the sort that works is
+not a premium estimate: the textbook `IV - E[RV]` ranks worst of the four
+signals tried (§3). What is being traded is the mean reversion, not the
+premium.
 
     uv run python -m tools.backtest.panel --refresh
-    uv run python -m research.vrp_cross_section.analysis --forecast-start 2023-06-01
+    uv run python -m research.single_name_iv_reversion.analysis --forecast-start 2023-06-01
 
 Everything mechanical lives in `tools/backtest/`. This module specifies the
 strategy, runs the experiments that justify each of its choices, and writes the
@@ -303,6 +319,51 @@ def run_exit_rule(context) -> tuple[pl.DataFrame, list]:
     return metrics.compare(results), results
 
 
+def run_attribution(gross_result) -> pl.DataFrame:
+    """Split the option P&L into the channels that could have produced it.
+
+    A first-order greek attribution, and the experiment that names the
+    strategy. Each day, each leg:
+
+    * **vega** = yesterday's vega x the change in implied vol. Money made
+      because the implied vol *level* moved.
+    * **theta** = yesterday's theta x days elapsed. The premium decaying.
+    * **gamma** = half yesterday's gamma x the squared move in the underlying.
+      Realized variance being captured.
+
+    Theta and gamma together are the variance risk premium: you pay theta for
+    the variance the option implies and earn gamma on the variance that
+    actually arrives, so their sum is realized-minus-implied. Vega is
+    something else entirely — it pays when the market re-prices volatility,
+    whatever subsequently gets realized.
+
+    Whichever dominates is what the strategy is. Here vega does, by a wide
+    margin, which is why "variance risk premium" would be the wrong label.
+
+    The attribution is first order, so a residual is expected; it is reported
+    rather than hidden, and at about a tenth of the option leg it is far too
+    small to disturb the ranking.
+    """
+    daily = gross_result.daily_pnl
+    total = lambda column: float(daily[column].sum())
+    option = total("option_pnl")
+    vega, theta, gamma = total("vega_pnl"), total("theta_pnl"), total("gamma_pnl")
+    rows = [
+        {"channel": "vega (implied vol moves)", "pnl": vega},
+        {"channel": "theta (premium decay)", "pnl": theta},
+        {"channel": "gamma (realized variance)", "pnl": gamma},
+        {"channel": "residual (higher order)", "pnl": option - vega - theta - gamma},
+        {"channel": "= option leg", "pnl": option},
+        {"channel": "delta hedge", "pnl": total("hedge_pnl")},
+        {"channel": "= gross total", "pnl": total("gross_pnl")},
+        {"channel": "mean reversion channel (vega)", "pnl": vega},
+        {"channel": "variance premium channel (gamma+theta)", "pnl": gamma + theta},
+    ]
+    return pl.DataFrame(rows).with_columns(
+        (pl.col("pnl") / option * 100).round(1).alias("pct_of_option_leg")
+    )
+
+
 def run_cost_curve(context) -> tuple[pl.DataFrame, list]:
     """What the strategy earns as it is charged more of the quoted spread.
 
@@ -507,6 +568,7 @@ def main() -> None:
     exit_df, _ = run_exit_rule(context)
     print("cost curve")
     cost_df, _ = run_cost_curve(context)
+    attribution_df = run_attribution(gross)
 
     headline_df = metrics.compare([gross, headline])
     # Graded gross, not net. Every decile here is held *long*, and buying
@@ -525,6 +587,7 @@ def main() -> None:
     profile_df.write_csv(RESULTS / "earnings_profile.csv")
     exit_df.write_csv(RESULTS / "exit_rule.csv")
     cost_df.write_csv(RESULTS / "cost_curve.csv")
+    attribution_df.write_csv(RESULTS / "attribution.csv")
 
     plot_equity(headline, "01_strategy.png")
     plot_deciles(gross, "02_deciles.png")
@@ -532,7 +595,8 @@ def main() -> None:
     plot_earnings(profile_df, "04_earnings.png")
     plot_costs(cost_df, exit_df, "05_costs.png")
 
-    for name, table in (("strategy", headline_df), ("signal race", race_df),
+    for name, table in (("strategy", headline_df), ("attribution", attribution_df),
+                        ("signal race", race_df),
                         ("earnings partition", earnings_df), ("exit rule", exit_df),
                         ("cost curve", cost_df), ("deciles", decile_df)):
         print(f"\n=== {name} ===")
