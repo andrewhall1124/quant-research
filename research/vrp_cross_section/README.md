@@ -30,6 +30,7 @@ configurations and scores them.
 | File | What it is |
 |---|---|
 | `analysis.py` | every configuration, figure and table |
+| `cost_efficiency.py` | quoted spread per dollar of vega, by tenor, price and open interest |
 | `results/open_interest_grid.csv` | the liquidity-floor sweep |
 | `results/holding_grid.csv` | the holding-period sweep |
 | `results/signal_race.csv` | five sorts through the same machinery |
@@ -63,6 +64,9 @@ configurations and scores them.
    which is why `formation_days` is reported in every table.
 2. **Spreads are enormous.** A median 19.8% of mid, 36.8% at the 75th
    percentile. This, not the signal, is what the study ends up being about.
+   `cost_efficiency.py` measures the quantity that actually decides it — quoted
+   spread per dollar of vega — and finds it varies almost 4x across choices
+   this study fixed arbitrarily, tenor above all.
 3. **One year is not enough.** ~200 overlapping days is ~10 independent
    observations, over a window with one dominant shock. The grid searched more
    configurations than the sample can support.

@@ -150,9 +150,16 @@ the work. It is not tradeable: break-even is 25.4% of the quoted spread at a
 assumption charges. The textbook `IV - E[RV]` definition is the *worst* real
 signal in the race, because with GARCH badly calibrated on these names the sort
 ranks mostly on forecast error. Two structural findings: the gross edge
-concentrates in illiquid names, so the OI screen and the signal pull against
-each other; and a decile sort is incompatible with a real liquidity screen at
-all, because the median day only offers 15 eligible names at an OI floor of 500.
+concentrates in illiquid names — but that is a *gross* statement, and open
+interest also buys tighter quotes, so the net-optimal floor is unknown and
+probably much higher; and a decile sort is incompatible with a real liquidity
+screen at all, because the median day only offers 15 eligible names at an OI
+floor of 500. The quantity that decides tradeability is quoted spread per
+dollar of vega, `(ask - bid) * 100 / vega`: it falls 46% going from 30-day to
+120-day contracts (ATM vega grows as sqrt(T), spreads are tick-driven) and
+another 2.5x from the thinnest to the richest OI bucket, so fixing the tenor at
+30 days was the study's most expensive unforced choice. Underlying price does
+not move it at all.
 
 `research/data_quality/` — audit behind the corporate-actions work. The feed
 itself is near-spotless: over 114M stored

@@ -58,7 +58,7 @@ Mincer-Zarnowitz slope at 0.23–0.45 on these names. This is what building a
 strategy on that miscalibration looks like: the premium you think you are
 sorting on is mostly your own forecast error.
 
-## 3. The edge lives exactly where it cannot be traded
+## 3. The gross edge weakens as the liquidity screen tightens
 
 Sharpe falls monotonically as the open-interest floor rises.
 
@@ -79,8 +79,16 @@ then drops three-quarters of the calendar. **A decile sort on single-name
 options is not compatible with a serious liquidity screen**; the cross-section
 is not deep enough. That is a design finding, not a tuning result.
 
-It also explains the cost outcome. The gross edge concentrates in illiquid
-names, which are the names with the widest spreads.
+Note carefully what this does **not** establish. Every number in the table is
+gross. Open interest also buys tighter quotes, so the same screen that costs
+gross Sharpe pays some of it back in execution, and the two effects were never
+measured against each other — the cost grid in §4 was run at a single OI floor.
+Cost per dollar of vega falls 2.5x from the thinnest bucket to the richest
+(§7), which is a large enough offset to flip the sign of the conclusion. **The
+net-optimal open-interest floor is unknown and is probably much higher than the
+gross-optimal one.** An earlier draft of this report claimed the edge "lives
+exactly where it cannot be traded"; that claim is not supported by anything
+measured here.
 
 ![grids](figures/03_grids.png)
 
@@ -140,9 +148,38 @@ curve rises fairly steadily rather than being one event.
 1. **More history.** STANDARD reaches 2016 for options. Everything above is one
    year, and the honest limit on every conclusion here is sample size.
 2. **Attack the spread, not the signal.** The gross edge is not in doubt; the
-   execution is. Structures that cross less spread — wider-dated options that
-   are rolled less often, or spreads rather than outright straddles — change
-   the denominator of the break-even calculation directly.
+   execution is. The quantity that sets break-even is the quoted spread per
+   dollar of vega bought, `(ask - bid) * 100 / vega`, and it varies by almost
+   4x across choices this study fixed arbitrarily. Measured over 1.1M ATM
+   contract-days:
+
+   | dte | cost per $vega | | open interest | @30d | @90-150d |
+   |---|---|---|---|---|---|
+   | 15-45 | 4.69 | | <10 | 5.26 | 2.98 |
+   | 45-75 | 3.68 | | 50-250 | 3.42 | 2.63 |
+   | 75-120 | 2.61 | | 250-1k | 2.77 | 1.87 |
+   | 120-180 | **2.54** | | >1k | **2.06** | **1.30** |
+   | 180-250 | 2.74 | | | | |
+
+   ATM vega grows as `sqrt(T)` while quoted spreads are closer to tick-driven,
+   so cost per unit of vega falls 46% out to ~120 days before liquidity thins
+   again past 180. The two levers compound: a 30-day contract in the thinnest
+   OI bucket costs 4.7, a 120-day contract with OI above 1,000 costs 1.30.
+   Underlying price, by contrast, does nothing (4.3-5.0 flat across buckets),
+   so the price filter here is data hygiene rather than a cost lever.
+
+   **Fixing the tenor at 30 days was the most expensive choice in the study**,
+   and it was inherited from the signal definition rather than chosen. Holding
+   period and option tenor do not have to match: a 90-120 day contract held 21
+   days buys the same vega for less than half the spread.
+
+   Naively, break-even 0.254 x (4.4 / 1.87) is about 0.60 — above the 0.5 that
+   makes a strategy tradeable. That projection assumes gross P&L per unit of
+   vega is unchanged, which is exactly what is in doubt: long-dated implied vol
+   is smoother and less dispersed cross-sectionally, so the z-score may carry a
+   weaker signal there, and the §3 table already suggests high-OI names are
+   less mispriced. Both push against the cost gain. It is an empirical question,
+   and a tenor x OI x cost grid is a loop rather than a rewrite.
 3. **A liquid-subset study with fewer buckets.** Deciles fail on a thin
    cross-section, but terciles or a fixed top-/bottom-N on the ~100 most liquid
    names would keep the sample intact while trading names that can absorb it.
