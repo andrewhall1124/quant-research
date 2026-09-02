@@ -156,6 +156,52 @@ def load_ticker_check(status: str | list[str] | None = None) -> pl.DataFrame:
     return only_symbols(frame, status, "status").sort("status", "symbol").collect()
 
 
+def load_earnings(
+    symbols: str | list[str] | None = None,
+    start: date | None = None,
+    end: date | None = None,
+) -> pl.DataFrame:
+    """Earnings announcement dates, one row per (symbol, date).
+
+    `session` is "bmo", "amc" or "unknown". It matters: a before-the-open
+    report moves that day's close-to-close return, an after-the-close report
+    moves the *next* one.
+    """
+    frame = pl.scan_parquet(require(paths.EARNINGS, "data_pipelines.earnings"))
+    return in_window(only_symbols(frame, symbols), start, end).sort("symbol", "date").collect()
+
+
+def with_earnings_distance(prices_df: pl.DataFrame) -> pl.DataFrame:
+    """Add `days_to_earnings` and `days_since_earnings` to a (symbol, date) panel.
+
+    Both are calendar days, and `days_to_earnings` counts to the next
+    announcement on or after the row's date. An implied-vol signal ranked
+    cross-sectionally will sort largely on this column unless it is controlled
+    for, which is the whole reason the table exists.
+    """
+    events_df = load_earnings().select(
+        "symbol", pl.col("date").alias("earnings_date")
+    )
+    ordered = prices_df.sort("symbol", "date")
+    events = events_df.sort("symbol", "earnings_date")
+    forward = ordered.join_asof(
+        events, left_on="date", right_on="earnings_date", by="symbol",
+        strategy="forward", check_sortedness=False,
+    ).select("symbol", "date", pl.col("earnings_date").alias("next_earnings"))
+    backward = ordered.join_asof(
+        events, left_on="date", right_on="earnings_date", by="symbol",
+        strategy="backward", check_sortedness=False,
+    ).select("symbol", "date", pl.col("earnings_date").alias("previous_earnings"))
+    return (
+        prices_df.join(forward, on=["symbol", "date"], how="left")
+        .join(backward, on=["symbol", "date"], how="left")
+        .with_columns(
+            (pl.col("next_earnings") - pl.col("date")).dt.total_days().alias("days_to_earnings"),
+            (pl.col("date") - pl.col("previous_earnings")).dt.total_days().alias("days_since_earnings"),
+        )
+    )
+
+
 def trusted_symbols() -> list[str]:
     """Symbols whose split adjustment has been verified against a second source."""
     return load_ticker_check("ok")["symbol"].to_list()

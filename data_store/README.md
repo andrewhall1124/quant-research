@@ -23,6 +23,7 @@ them means re-deriving each one by hand.
 | `fred_rates.parquet` | `reference` | `load_fred_rates` | 2,430 | 2024-12-02 → 2025-12-31 |
 | `corporate_actions.parquet` | `corporate_actions` | `load_corporate_actions` | 2,728 | 2025-01-02 → present |
 | `ticker_check.parquet` | `corporate_actions` | `load_ticker_check`, `trusted_symbols` | 523 | one row per universe ticker |
+| `earnings.parquet` | `earnings` | `load_earnings`, `with_earnings_distance` | 45,060 | 1999-08-02 → 2026-12-09 |
 
 Year-stamped names mark the expensive per-symbol pulls, pinned to the window
 they were pulled for. Reference tables are cheap to re-pull in full and carry
@@ -288,6 +289,38 @@ and the split factors are both right.
   tickers entirely, which is textbook survivorship bias. Those names need
   excluding on point-in-time membership, not adjusting.
 
+## `earnings.parquet` — announcement dates
+
+From Yahoo, ~100 announcements per name. 45,060 rows across 521 of the 523
+universe tickers, reaching back to 1999 — deeper than any option history
+ThetaData sells, so this is never the binding constraint. 19,834 of them fall
+in 2016-2025.
+
+| Column | Type | Notes |
+|---|---|---|
+| `symbol` `yahoo_symbol` | String | |
+| `date` | Date | announcement date |
+| `session` | String | `bmo` (26,582), `amc` (17,897), `unknown` (581) |
+| `announced_at` | Datetime(ms, America/New_York) | scheduled time, which is where `session` comes from |
+| `eps_estimate` `reported_eps` `surprise_pct` | Float64 | null for announcements not yet reported |
+
+**Gotchas**
+
+- **`session` changes which day the move lands on.** A before-the-open report
+  moves that day's close-to-close return; an after-the-close report moves the
+  *next* one. Two thirds of the table is `bmo`, so getting this backwards
+  misaligns most of the sample by a day.
+- **This is what separates a volatility signal from an earnings-timing
+  signal.** Implied vol lifts into a report, so any cross-sectional ranking on
+  implied-minus-realized sorts largely on days-to-announcement unless it is
+  controlled for. `with_earnings_distance()` adds `days_to_earnings` and
+  `days_since_earnings` to any (symbol, date) panel.
+- Dates for future quarters are Yahoo's *estimates* and get revised. Past dates
+  are firm.
+- Two symbols have no earnings data at all. Announcement dates are scheduled in
+  advance, so using them as an ex-ante filter is not lookahead — but the EPS
+  columns are, and must not be.
+
 ---
 
 ## Symbology
@@ -319,6 +352,7 @@ substitute.
 uv run python -m data_pipelines.universe            # seconds
 uv run python -m data_pipelines.reference           # ~1 min
 uv run python -m data_pipelines.corporate_actions   # ~30 s
+uv run python -m data_pipelines.earnings            # ~3 min
 uv run python -m data_pipelines.underlying          # 17 min
 uv run python -m data_pipelines.options             # 3.5 hr, resumable
 uv run python -m data_pipelines.options --symbols SPX,SPXW,XSP \

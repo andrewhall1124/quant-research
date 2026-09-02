@@ -24,6 +24,10 @@ FRED_RATES = DATA_STORE / "fred_rates.parquet"
 CORPORATE_ACTIONS = DATA_STORE / "corporate_actions.parquet"
 TICKER_CHECK = DATA_STORE / "ticker_check.parquet"
 
+# Earnings announcement dates, so a volatility signal can be separated from an
+# earnings-timing signal.
+EARNINGS = DATA_STORE / "earnings.parquet"
+
 # One parquet per symbol; too large to keep in a single file.
 OPTIONS_DIR = DATA_STORE / "options_2025"
 INDEX_OPTIONS_DIR = DATA_STORE / "index_options_2025"
@@ -37,6 +41,7 @@ DATASETS = {
     "fred_rates": FRED_RATES,
     "corporate_actions": CORPORATE_ACTIONS,
     "ticker_check": TICKER_CHECK,
+    "earnings": EARNINGS,
     "options": OPTIONS_DIR,
     "index_options": INDEX_OPTIONS_DIR,
 }

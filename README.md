@@ -28,6 +28,7 @@ uv run python -m data_pipelines.underlying    # EOD stock prices for that univer
 uv run python -m data_pipelines.options       # EOD option chains for that universe
 uv run python -m data_pipelines.reference     # indices, VIX complex, yields, SOFR
 uv run python -m data_pipelines.corporate_actions  # splits + dividends (Yahoo), and a vendor cross-check
+uv run python -m data_pipelines.earnings      # earnings announcement dates + session (Yahoo)
 uv run python -m data_pipelines.options --symbols SPX,SPXW,XSP \
     --output-dir data_store/index_options_2025
 ```
