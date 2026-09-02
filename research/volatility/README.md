@@ -18,8 +18,11 @@ Needs `indices.parquet` (SPX + VIX complex) and, for the validation figure,
 | File | What it is |
 |---|---|
 | `analysis.py` | the whole study: panel, horse race, scoring, every figure |
-| `volatility_models.py` | the four forecasters, all returning annualized decimal vol for `t+1..t+h` |
 | `implied_vol.py` | Black-76 inversion of the SPXW chain, used only to check VIX |
+
+Shared with `research/single_name_vol/`: `research/vol_models.py` (the four
+forecasters, all returning annualized decimal vol for `t+1..t+h`) and
+`research/scoring.py` (Mincer-Zarnowitz, the two losses, Diebold-Mariano).
 | `figures/*.png` | regenerated on every run |
 | `results/*.csv` | the numbers behind the report's tables |
 

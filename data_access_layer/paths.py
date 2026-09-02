@@ -49,14 +49,21 @@ DATASETS = {
 }
 
 
-def option_chain_path(symbol: str, index: bool = False) -> Path:
-    """Path to one symbol's chain. Index roots live in their own directory."""
+def option_chain_path(symbol: str, index: bool = False, greeks: bool = False) -> Path:
+    """Path to one symbol's chain.
+
+    Index roots live in their own directory, and the greeks pull is a third
+    directory rather than extra columns on the first: it is a separate,
+    slower endpoint and is not expected to cover the same symbols.
+    """
+    if greeks:
+        return OPTION_GREEKS_DIR / f"{symbol.upper()}.parquet"
     directory = INDEX_OPTIONS_DIR if index else OPTIONS_DIR
     return directory / f"{symbol.upper()}.parquet"
 
 
-def available_option_symbols(index: bool = False) -> list[str]:
-    directory = INDEX_OPTIONS_DIR if index else OPTIONS_DIR
+def available_option_symbols(index: bool = False, greeks: bool = False) -> list[str]:
+    directory = OPTION_GREEKS_DIR if greeks else (INDEX_OPTIONS_DIR if index else OPTIONS_DIR)
     if not directory.exists():
         return []
     return sorted(path.stem for path in directory.glob("*.parquet"))

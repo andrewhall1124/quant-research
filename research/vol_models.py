@@ -1,4 +1,4 @@
-"""The four volatility forecasters compared in this study.
+"""The volatility forecasters, shared by every study in `research/`.
 
 Every model answers the same question and returns the same thing: given
 information through day `t` only, what is annualized volatility going to be
@@ -21,9 +21,22 @@ from arch import arch_model
 TRADING_DAYS = 252
 
 
+# A window with too many blanked returns is not a volatility estimate.
+MIN_VALID_SHARE = 0.8
+
+
 def realized_vol(returns: np.ndarray) -> float:
-    """Annualized realized volatility of a block of log returns."""
-    return float(np.sqrt(TRADING_DAYS * np.mean(returns**2)))
+    """Annualized realized volatility of a block of log returns.
+
+    NaN-aware, because single-name return series carry holes where a split or
+    an unverifiable jump was blanked out. A window that has lost more than
+    `1 - MIN_VALID_SHARE` of its days returns NaN rather than a number computed
+    off whatever is left.
+    """
+    valid = returns[np.isfinite(returns)]
+    if len(returns) == 0 or len(valid) < MIN_VALID_SHARE * len(returns):
+        return float("nan")
+    return float(np.sqrt(TRADING_DAYS * np.mean(valid**2)))
 
 
 def forward_realized_vol(returns: np.ndarray, horizon: int) -> np.ndarray:
@@ -59,16 +72,36 @@ def fit_and_forecast(
 
     `model` is "ARCH" (ARCH(5)) or "GARCH" (GARCH(1,1)).
     """
+    return fit_and_forecast_horizons(returns, [horizon], model, burn_in, refit_every)[horizon]
+
+
+def fit_and_forecast_horizons(
+    returns: np.ndarray,
+    horizons: list[int],
+    model: str,
+    burn_in: int,
+    refit_every: int = 5,
+) -> dict[int, np.ndarray]:
+    """`fit_and_forecast` for several horizons off one pass.
+
+    The conditional-variance path a model projects at an origin already covers
+    every horizon, so fitting once per origin and slicing the path is exactly
+    equivalent to fitting per horizon — and twice as fast, which matters when
+    the sweep runs over 500 names rather than one index.
+    """
     if model not in {"ARCH", "GARCH"}:
         raise ValueError(f"unknown model {model!r}")
 
-    # arch's optimizer wants returns on a percent scale.
+    # arch's optimizer wants returns on a percent scale. NaNs left by a
+    # corporate action are dropped for estimation; the index is not used.
+    
     scaled = pd.Series(returns * 100)
-    out = np.full(len(returns), np.nan)
+    out = {horizon: np.full(len(returns), np.nan) for horizon in horizons}
+    longest = max(horizons)
     params = None
 
     for origin in range(burn_in, len(returns)):
-        window = scaled.iloc[: origin + 1]
+        window = scaled.iloc[: origin + 1].dropna()
         specification = (
             arch_model(window, mean="Constant", vol="ARCH", p=5)
             if model == "ARCH"
@@ -79,9 +112,10 @@ def fit_and_forecast(
             params = specification.fit(disp="off", show_warning=False).params
 
         fixed = specification.fix(params)
-        forecast = fixed.forecast(horizon=horizon, reindex=False)
-        # Mean variance per day over the horizon, back from percent to decimal.
-        mean_variance = float(np.mean(forecast.variance.values[-1])) / 10_000
-        out[origin] = np.sqrt(TRADING_DAYS * mean_variance)
+        path = fixed.forecast(horizon=longest, reindex=False).variance.values[-1]
+        for horizon in horizons:
+            # Mean variance per day over the horizon, back from percent to decimal.
+            mean_variance = float(np.mean(path[:horizon])) / 10_000
+            out[horizon][origin] = np.sqrt(TRADING_DAYS * mean_variance)
 
     return out

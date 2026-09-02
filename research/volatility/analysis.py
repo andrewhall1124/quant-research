@@ -34,8 +34,15 @@ import seaborn as sns
 import statsmodels.api as sm
 
 import data_access_layer as dal
+from research.scoring import (
+    LOSSES,
+    diebold_mariano_pair,
+    hac_kwargs,
+    mincer_zarnowitz,
+    qlike_loss,
+)
 from research.volatility.implied_vol import build_atm_iv_series
-from research.volatility.volatility_models import (
+from research.vol_models import (
     fit_and_forecast,
     forward_realized_vol,
     trailing_realized_vol,
@@ -123,69 +130,6 @@ def attach_benchmark(frame: pd.DataFrame, target: str) -> pd.DataFrame:
     return frame.assign(**{BENCHMARK: frame[BENCHMARK_COLUMN[target]]})
 
 
-def mincer_zarnowitz(target: np.ndarray, forecast: np.ndarray, lags: int) -> dict:
-    """Regress target on forecast with Newey-West errors: is the forecast calibrated?
-
-        target[t+h] = alpha + beta * forecast[t] + error
-
-    A calibrated forecast has alpha = 0 and beta = 1. The two coefficients
-    diagnose different faults, and the useful test is the joint one:
-
-    * `beta != 1` — mis-scaled. Below 1 the forecast over-reacts (it moves more
-      than the outcome does); above 1 it under-reacts.
-    * `alpha != 0` with `beta` near 1 — a pure level bias. The forecast tracks
-      moves correctly and sits a constant distance away, which is a *fixable*
-      forecast: subtract the constant.
-
-    Note what is *not* tested here: `beta = 0`. That null says only "this
-    forecast carries some information", which any volatility-shaped series
-    passes against a persistent target, so its t-statistic is close to
-    uninformative. `t_beta_eq_1` and the joint Wald test are the ones to read.
-    """
-    design = sm.add_constant(forecast)
-    fit = sm.OLS(target, design).fit(cov_type="HAC", cov_kwds={"maxlags": lags})
-    intercept, slope = fit.params[0], fit.params[1]
-    # Joint H0: alpha = 0 and beta = 1 — calibration as a single question.
-    joint = fit.wald_test(
-        (np.eye(2), np.array([0.0, 1.0])), use_f=True, scalar=True
-    )
-    return {
-        "alpha": intercept,
-        "beta": slope,
-        "t_alpha_eq_0": intercept / fit.bse[0],
-        "t_beta_eq_1": (slope - 1) / fit.bse[1],
-        "mz_joint_f": float(joint.statistic),
-        "mz_joint_p": float(joint.pvalue),
-        "r2": fit.rsquared,
-    }
-
-
-def squared_error_loss(actual: np.ndarray, forecast: np.ndarray) -> np.ndarray:
-    """Per-period squared error, in squared vol points.
-
-    Symmetric in levels: a 5-point miss at VIX 15 costs the same as at VIX 60.
-    That makes it dominated by the few highest-vol days in the sample.
-    """
-    return (forecast - actual) ** 2
-
-
-def qlike_loss(actual: np.ndarray, forecast: np.ndarray) -> np.ndarray:
-    """Per-period QLIKE loss on variances: `s/f - log(s/f) - 1`.
-
-    Scale-free — it sees the *ratio* of realized to forecast variance — and
-    asymmetric: under-forecasting is punished far harder than over-forecasting,
-    which is usually the right shape for volatility.
-
-    Both this and squared error are robust in Patton's sense: because the
-    target is a noisy proxy for the latent variance, most loss functions rank
-    forecasts differently on the proxy than they would on the truth. These two
-    do not. MAE and correlation are not robust and must not be used to rank.
-    """
-    ratio = (actual / forecast) ** 2
-    return ratio - np.log(ratio) - 1
-
-
-LOSSES = {"mse": squared_error_loss, "qlike": qlike_loss}
 
 
 def score(frame: pd.DataFrame, target: str, horizon: int) -> pd.DataFrame:
@@ -206,50 +150,13 @@ def score(frame: pd.DataFrame, target: str, horizon: int) -> pd.DataFrame:
                 "mae": float(np.mean(np.abs(error))),
                 "bias": float(np.mean(error)),
                 "corr": float(np.corrcoef(forecast, actual)[0, 1]),
-                **mincer_zarnowitz(actual, forecast, horizon),
+                **mincer_zarnowitz(actual, forecast, hac_kwargs(horizon)),
             }
         )
     scored_df = pd.DataFrame(rows)
     scored_df["rmse_vs_best"] = scored_df["rmse"] / scored_df["rmse"].min()
     scored_df["qlike_vs_best"] = scored_df["qlike"] / scored_df["qlike"].min()
     return scored_df
-
-
-def diebold_mariano_pair(
-    actual: np.ndarray,
-    forecast_a: np.ndarray,
-    forecast_b: np.ndarray,
-    loss: str,
-    horizon: int,
-) -> dict:
-    """Test whether forecast A is more accurate than forecast B.
-
-    Form the per-period loss differential `d[t] = L(A) - L(B)` and test
-    `E[d] = 0` — which is exactly a HAC t-test on the mean of `d`, i.e. an OLS
-    regression of `d` on a constant with Newey-West errors at `h` lags.
-
-    A negative mean means A loses less, so a t-statistic below -1.96 says A
-    beats B. The point of testing the *differential* rather than eyeballing two
-    RMSEs is that the two forecasts see the same shocks: the common component
-    cancels, and what is left is the part of the accuracy gap that is not just
-    both models reacting to the same April.
-
-    Both forecasts here are non-nested, which is what plain DM assumes. A model
-    nested in its rival (adding a regressor to it) would need Clark-West
-    instead — DM is undersized in that case.
-    """
-    difference = LOSSES[loss](actual, forecast_a) - LOSSES[loss](actual, forecast_b)
-    fit = sm.OLS(difference, np.ones(len(difference))).fit(
-        cov_type="HAC", cov_kwds={"maxlags": horizon}
-    )
-    mean_difference, t_stat = float(fit.params[0]), float(fit.tvalues[0])
-    return {
-        "loss": loss,
-        "mean_loss_diff": mean_difference,
-        "t_stat": t_stat,
-        "a_better": bool(t_stat < -1.96),
-        "b_better": bool(t_stat > 1.96),
-    }
 
 
 def diebold_mariano(frame: pd.DataFrame, target: str, horizon: int) -> pd.DataFrame:
@@ -270,7 +177,7 @@ def diebold_mariano(frame: pd.DataFrame, target: str, horizon: int) -> pd.DataFr
                         frame[name_a].to_numpy(),
                         frame[name_b].to_numpy(),
                         loss,
-                        horizon,
+                        hac_kwargs(horizon),
                     ),
                 }
             )
@@ -385,7 +292,7 @@ def plot_scatter(frames: dict[int, pd.DataFrame], target: str, filename: str, la
             fit = np.polyfit(forecast, actual, 1)
             axis.plot(limits, np.polyval(fit, limits), color="#2A2A2A", lw=1.4, label="MZ fit")
 
-            stats = mincer_zarnowitz(actual, forecast, horizon)
+            stats = mincer_zarnowitz(actual, forecast, hac_kwargs(horizon))
             axis.set_title(
                 f"{model}, h={horizon}\nR²={stats['r2']:.2f}  β={stats['beta']:.2f}",
                 fontsize=9.5,

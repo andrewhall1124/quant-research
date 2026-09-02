@@ -19,5 +19,8 @@ data_store/*
 # Cached API samples inside studies
 research/*/sample/
 
+# Rebuildable research caches (minutes of compute, not results)
+research/*/results/panel.parquet
+
 # Playwright MCP scratch output
 .playwright-mcp/

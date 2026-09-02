@@ -86,7 +86,14 @@ so an interrupted pull can just be re-run.
 
 `research/<topic>/` holds `README.md` (what and how to run), `analysis.py`
 (regenerates every figure from scratch), `figures/*.png`, `results/*.csv`, and
-`REPORT.md` (the findings, referencing those pngs).
+`REPORT.md` (the findings, referencing those pngs). Two modules sit at the
+`research/` root rather than being duplicated per study: `vol_models.py` (the
+forecasters) and `scoring.py` (Mincer-Zarnowitz, the two robust losses,
+Diebold-Mariano, and the covariance helpers).
+
+A study may cache an expensive intermediate under its own `results/` — as
+`single_name_vol/panel.py` does, ~15 minutes of chain inversion — but
+`data_store/` still belongs to the pipelines alone.
 
 - `research/` and each topic folder need an `__init__.py`, because studies are
   run as modules: `uv run python -m research.volatility.analysis`.
@@ -103,6 +110,15 @@ so an interrupted pull can just be re-run.
   significance, encompassing for information. Always include a constant
   benchmark; "beats a level guess" is a real hurdle and several models here
   fail it.
+- **Pooled panels need Driscoll-Kraay, not Newey-West.** ~500 names on the same
+  dates share a market factor, so residuals correlate across the panel every
+  day, and NW — which only prices the time dimension — overstates t-statistics
+  by 3-7x in `research/single_name_vol/`. Use
+  `research.scoring.driscoll_kraay_kwargs`; statsmodels calls it
+  `cov_type="hac-groupsum"`, and its Wald test needs the chi-square form
+  because the F form returns NaN there. The correction bites hardest on
+  Diebold-Mariano tests, where serial correlation is nearly irrelevant and
+  cross-sectional correlation is everything.
 - Report what the sample cannot establish, not just what it shows. The
   2024-2025 window has one dominant shock (April 2025), so point estimates are
   clean and pairwise significance usually is not.
@@ -117,6 +133,20 @@ prices back to the cash close within 3-8 bp for liquid names, so the quote legs
 and the close are genuinely simultaneous. Every real defect is a corporate
 action (see the quirks above) or a reused ticker (SOLS returns four Jan-Apr 2025
 rows at $0.0001 before its actual 2025-10-30 listing - the BNY problem again).
+
+`research/single_name_vol/` — the same horse race across 469 S&P 500 names,
+2025. Implied vol wins again and this time significantly: it beats every rival
+on both losses at both horizons, 29 of 32 pairwise DM tests clear 5% under
+Driscoll-Kraay, and it encompasses all three (coefficient ~0.85, t of 14-16).
+It is the only near-calibrated forecast (MZ slope 0.86-0.90 vs 0.23-0.45, and
+the only zero intercept). It does not win everywhere: lowest QLIKE in 343/469
+names at h=5 and 293 at h=21, with a per-name level guess taking 82-108.
+Trailing RV is the worst forecast in the study under QLIKE while looking
+competitive on RMSE. The variance risk premium is positive in 86-97% of names
+but proportionally smaller than the index's at a month (1.14x vs 1.21x) and
+spans -22 to +14 points. The inverted 30-day ATM IV matches ThetaData's own
+`implied_vol` to a median 0.07 vol points over 7,062 name-days, so the measure
+is not carrying the result.
 
 `research/volatility/` — implied vol beats trailing RV, ARCH(5) and GARCH(1,1)
 at forecasting both forward realized and forward implied vol, at 5 and 21 days,

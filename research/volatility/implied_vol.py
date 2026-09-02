@@ -57,9 +57,13 @@ def implied_vol(price: float, forward: float, strike: float, ttm: float, is_call
 def atm_vol_for_expiry(expiry_df: pl.DataFrame, discount_rate: float) -> tuple[float, float]:
     """(time to expiry in years, ATM implied vol) for one date-expiration slice."""
     ttm = expiry_df["dte"][0] / 365.0
+    quoted_df = expiry_df.pivot(on="right", index="strike", values="mid")
+    # Thin single-name expirations can quote one side only, leaving no pair to
+    # take parity from. Nothing to invert, so say so.
+    if not {"CALL", "PUT"}.issubset(quoted_df.columns):
+        return ttm, np.nan
     paired_df = (
-        expiry_df.pivot(on="right", index="strike", values="mid")
-        .drop_nulls(["CALL", "PUT"])
+        quoted_df.drop_nulls(["CALL", "PUT"])
         .with_columns((pl.col("CALL") - pl.col("PUT")).abs().alias("gap"))
         .sort("gap")
     )
