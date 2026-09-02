@@ -71,11 +71,34 @@ def normalize_ticker(ticker: str, asset: str) -> str:
     return ticker
 
 
+def reset_client() -> None:
+    """Drop the shared client so the next caller builds a fresh session.
+
+    A multi-hour backfill outlives a ThetaData session: the server eventually
+    answers UNAUTHENTICATED, and every later request on that channel fails the
+    same way. Reconnecting is the only recovery, so `with_retries` calls this
+    before retrying that one status.
+    """
+    global shared_client
+    with client_lock:
+        shared_client = None
+
+
 def load_universe_tickers(
-    universe_path: str, asset: str, limit: int | None = None
+    universe_path: str, asset: str, limit: int | None = None, year: int | None = None
 ) -> list[str]:
+    """Symbols in a universe file, spelled the way `asset` expects.
+
+    `year` narrows a multi-year universe (`universe_history.parquet`) to the
+    names that were actually members that year. Without it a backfill would
+    request all 691 tickers the 2016-2024 window ever held on every one of its
+    years, a third of them not listed at the time.
+    """
+    universe_df = pl.read_parquet(universe_path)
+    if year is not None and "year" in universe_df.columns:
+        universe_df = universe_df.filter(pl.col("year") == year)
     tickers = (
-        pl.read_parquet(universe_path)
+        universe_df
         .select("ticker")
         .unique()
         .sort("ticker")["ticker"]
@@ -103,9 +126,17 @@ def with_retries(
         try:
             return fetch(symbol)
         except Exception as error:
-            retryable = "RESOURCE_EXHAUSTED" in str(error) or "UNAVAILABLE" in str(error)
+            message = str(error)
+            expired = "UNAUTHENTICATED" in message
+            retryable = (
+                expired
+                or "RESOURCE_EXHAUSTED" in message
+                or "UNAVAILABLE" in message
+            )
             if not retryable or attempt == attempts - 1:
                 raise
+            if expired:
+                reset_client()
             time.sleep(2**attempt)
     raise RuntimeError("unreachable")
 

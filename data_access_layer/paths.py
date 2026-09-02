@@ -55,6 +55,7 @@ OPTION_DIR_PREFIXES = {
     "open_interest": "open_interest",
     "option_greeks": "option_greeks",
     "index_options": "index_options",
+    "index_greeks": "index_greeks",
 }
 UNSTAMPED_2025_DIRS = {"open_interest", "option_greeks"}
 
@@ -108,8 +109,14 @@ DATASETS = {
 
 
 def option_dataset_name(index: bool = False, greeks: bool = False) -> str:
+    """The per-symbol dataset an (index, greeks) pair lives in.
+
+    Index roots stay in their own directory rather than mixing into the
+    constituent chains: they are not universe members, and a caller listing
+    `available_option_symbols` wants one or the other, never both.
+    """
     if greeks:
-        return "option_greeks"
+        return "index_greeks" if index else "option_greeks"
     return "index_options" if index else "options"
 
 

@@ -19,6 +19,7 @@ split factors are both right. Disagreement means one of them is wrong, and the
 """
 
 import argparse
+import os
 import time
 from datetime import date
 from pathlib import Path
@@ -225,6 +226,18 @@ def check_closes(
     ).sort("status", "symbol")
 
 
+def write_atomic(frame: pl.DataFrame, path: Path) -> None:
+    """Write via a sibling temp file and rename.
+
+    This pipeline rewrites its output in full every run, and research sessions
+    read the same two files continuously. `os.replace` is atomic on POSIX, so a
+    reader gets either the old table or the new one, never a half-written one.
+    """
+    temp_path = path.with_suffix(path.suffix + ".tmp")
+    frame.write_parquet(temp_path)
+    os.replace(temp_path, path)
+
+
 def run(start: date, universe_path: str, chunk_size: int) -> None:
     pairs = load_ticker_pairs(universe_path)
     print(f"corporate actions: {len(pairs)} symbols, {start} .. {date.today()}")
@@ -235,8 +248,8 @@ def run(start: date, universe_path: str, chunk_size: int) -> None:
     checks_df = check_closes(quotes_df, actions_df, pairs)
 
     paths.CORPORATE_ACTIONS.parent.mkdir(parents=True, exist_ok=True)
-    actions_df.write_parquet(paths.CORPORATE_ACTIONS)
-    checks_df.write_parquet(paths.TICKER_CHECK)
+    write_atomic(actions_df, paths.CORPORATE_ACTIONS)
+    write_atomic(checks_df, paths.TICKER_CHECK)
 
     splits_df = actions_df.filter(pl.col("action") == "split")
     print(

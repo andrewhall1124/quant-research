@@ -88,8 +88,8 @@ def build_atm_iv(symbol: str, rates: dict[date, float], target_days: int = TARGE
     Taking the forward from parity rather than assuming a dividend yield is what
     makes this usable on 500 names with 500 different dividend policies.
     """
-    chain_df = dal.load_option_chain(
-        symbol, min_dte=3, max_dte=90, max_moneyness=0.10, with_spot=True
+    chain_df = dal.load_option_greeks(
+        symbol, min_dte=3, max_dte=90, max_moneyness=0.10
     ).filter(pl.col("bid") > 0)
     if chain_df.height == 0:
         return pl.DataFrame(schema={"date": pl.Date, "atm_iv": pl.Float64})
@@ -164,7 +164,7 @@ def build_panel(symbols: list[str] | None = None, verbose: bool = True) -> pl.Da
     rate_df = dal.load_yields("13w").select("date", pl.col("yield").alias("rate"))
     rates = dict(zip(rate_df["date"].to_list(), rate_df["rate"].to_list()))
 
-    wanted = symbols or paths.available_option_symbols()
+    wanted = symbols or paths.available_option_symbols(greeks=True)
     frames, skipped = [], []
     started = time.time()
     for position, symbol in enumerate(wanted, start=1):

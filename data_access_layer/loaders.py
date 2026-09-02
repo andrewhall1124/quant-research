@@ -399,6 +399,7 @@ def load_option_greeks(
     quoted_only: bool = False,
     columns: list[str] | None = None,
     years: int | list[int] | None = paths.SAMPLE_YEAR,
+    index: bool = False,
 ) -> pl.DataFrame:
     """One symbol's EOD chain with greeks, IV and the underlying price.
 
@@ -425,9 +426,11 @@ def load_option_greeks(
     loader — unlike `load_option_chain` — needs no stock tier and so is usable
     across the whole option history.
     """
+    dataset = paths.option_dataset_name(index, greeks=True)
     greek_paths = resolve_option_paths(
-        symbol, "option_greeks", years,
-        f"data_pipelines.option_greeks --symbols {symbol.upper()}",
+        symbol, dataset, years,
+        f"data_pipelines.option_greeks --symbols {symbol.upper()}"
+        + (f" --output-dir {paths.option_dir(dataset, paths.SAMPLE_YEAR)}" if index else ""),
     )
     frame = (
         pl.scan_parquet(greek_paths)

@@ -315,7 +315,7 @@ def check_underlying_store() -> tuple[pl.DataFrame, pl.DataFrame]:
 
 def check_chain_store() -> pl.DataFrame:
     """Sweep every stored 2025 chain for the same pathologies as the sample."""
-    files = sorted(paths.OPTIONS_DIR.glob("*.parquet"))
+    files = sorted(paths.OPTION_GREEKS_DIR.glob("*.parquet"))
     scanned = pl.scan_parquet(files)
     return scanned.select(
         pl.len().alias("rows"),
@@ -365,6 +365,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--skip-store-sweep",
         action="store_true",
-        help="skip the 1.6 GB pass over data_store/options_2025",
+        help="skip the 8.5 GB pass over data_store/option_greeks",
     )
     run(parser.parse_args().skip_store_sweep)

@@ -88,7 +88,7 @@ def build_atm_iv_series(
     start: date | None = None, end: date | None = None, root: str = "SPXW"
 ) -> pl.DataFrame:
     """Daily 30-day ATM implied vol interpolated from the index chain."""
-    chain_df = dal.load_option_chain(
+    chain_df = dal.load_option_greeks(
         root,
         index=True,
         start=start,
@@ -96,7 +96,6 @@ def build_atm_iv_series(
         min_dte=7,
         max_dte=60,
         max_moneyness=0.03,
-        with_spot=True,
     ).filter(pl.col("bid") > 0)
 
     rate_df = dal.load_yields("13w", start, end).select("date", pl.col("yield").alias("rate"))

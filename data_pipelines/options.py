@@ -39,6 +39,7 @@ def run(
     workers: int,
     limit: int | None,
     symbols: list[str] | None = None,
+    universe_year: int | None = None,
 ) -> None:
     """Pull chains for `symbols`, or for the whole universe when it is None.
 
@@ -46,7 +47,7 @@ def run(
     index roots (SPX, SPXW, XSP) get pulled — they are not constituents.
     """
     if symbols is None:
-        symbols = load_universe_tickers(universe_path, "option", limit)
+        symbols = load_universe_tickers(universe_path, "option", limit, universe_year)
     elif limit:
         symbols = symbols[:limit]
     output_path = Path(output_dir)
@@ -96,11 +97,18 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     start_date, end_date = args.start, args.end
+    universe_path = args.universe
     output_dir = args.output_dir
     if args.year is not None:
         start_date = date(args.year, 1, 1)
         end_date = date(args.year, 12, 31)
-        output_dir = str(paths.option_dir("options", args.year))
+        # An explicit --output-dir still wins: that is how index roots are
+        # pulled into their own directory rather than the constituent one.
+        if args.output_dir == str(paths.OPTIONS_DIR):
+            output_dir = str(paths.option_dir("options", args.year))
+        if args.year != paths.SAMPLE_YEAR and args.universe == str(paths.UNIVERSE):
+            # A backfill year needs that year's members, not 2025's.
+            universe_path = str(paths.UNIVERSE_HISTORY)
 
     symbols = (
         [symbol.strip().upper() for symbol in args.symbols.split(",") if symbol.strip()]
@@ -111,9 +119,10 @@ if __name__ == "__main__":
     run(
         start_date,
         end_date,
-        args.universe,
+        universe_path,
         output_dir,
         args.workers,
         args.limit,
         symbols,
+        args.year,
     )

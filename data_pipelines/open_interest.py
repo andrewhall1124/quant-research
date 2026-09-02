@@ -75,9 +75,10 @@ def run(
     workers: int,
     limit: int | None,
     symbols: list[str] | None = None,
+    universe_year: int | None = None,
 ) -> None:
     if symbols is None:
-        symbols = load_universe_tickers(universe_path, "option", limit)
+        symbols = load_universe_tickers(universe_path, "option", limit, universe_year)
     elif limit:
         symbols = symbols[:limit]
 
@@ -126,15 +127,22 @@ def main() -> None:
     args = parser.parse_args()
 
     start_date, end_date = args.start, args.end
+    universe_path = args.universe
     output_dir = args.output
     if args.year is not None:
         start_date = date(args.year, 1, 1)
         end_date = date(args.year, 12, 31)
-        output_dir = str(paths.option_dir("open_interest", args.year))
+        # An explicit --output-dir still wins: that is how index roots are
+        # pulled into their own directory rather than the constituent one.
+        if args.output == str(paths.OPEN_INTEREST_DIR):
+            output_dir = str(paths.option_dir("open_interest", args.year))
+        if args.year != paths.SAMPLE_YEAR and args.universe == str(paths.UNIVERSE):
+            # A backfill year needs that year's members, not 2025's.
+            universe_path = str(paths.UNIVERSE_HISTORY)
 
     run(
-        start_date, end_date, args.universe, output_dir,
-        args.workers, args.limit, args.symbols,
+        start_date, end_date, universe_path, output_dir,
+        args.workers, args.limit, args.symbols, args.year,
     )
 
 
