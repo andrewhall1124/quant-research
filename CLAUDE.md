@@ -75,3 +75,27 @@ and encompasses all three. It is well-scaled (MZ slope ≈ 1) but biased high by
 vol at a month; ARCH/GARCH have ~zero explanatory power there. A 30-day ATM IV
 rebuilt from the SPXW chain correlates 0.991 with VIX and sits 3.7 points below
 it (put skew), so VIX is a safe stand-in for information questions.
+
+## Subscription tiers (checked 2026-09-02)
+
+Subscriptions are sold per asset class; there is no bundle. Annual billing is
+20% off the monthly price.
+
+Options — Value $40, Standard $80, Pro $160 /mo. Stocks — Value $30, Standard
+$80, Pro $160 /mo. First access date by tier: options FREE 2023-06-01, VALUE
+2020-01-01, STANDARD 2016-01-01, PRO 2012-06-01; stocks FREE 2023-06-01, VALUE
+2021-01-01, STANDARD 2016-01-01, PRO 2012-06-01.
+
+- **EOD greeks + IV need Options STANDARD.** The tier table on the
+  Subscriptions page shows "Greeks 1st Order" and "Implied Volatility" from
+  VALUE up, but that row refers to the intraday endpoints, and even those carry
+  a Standard/Pro badge on their own doc pages. The one endpoint that gives
+  greeks and IV off the EOD report — `/v3/option/history/greeks/eod` — is
+  badged Standard/Pro. Do not buy VALUE expecting EOD greeks.
+- **Open interest is cheap.** `/v3/option/history/open_interest` is badged
+  Value/Standard/Pro (the subscription table claims FREE); it is not what
+  forces the tier.
+- **Concurrency scales with tier**: FREE 30 reqs/min, VALUE 2, STANDARD 4, PRO
+  8 concurrent. STANDARD doubles the 2-worker ceiling noted above.
+- **`expiration=*` must be requested day by day** on the EOD greeks endpoint,
+  so an SP500 pull is symbols x trading days, not symbols x expirations.
