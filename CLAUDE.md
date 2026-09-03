@@ -202,18 +202,38 @@ puts two thirds of the option P&L in vega (implied vol moving) against a third
 in gamma+theta (realized undershooting implied), the book is vega-neutral so
 the premium's level cancels by construction, and `IV - E[RV]` — the premium
 measured directly — ranks last of four signals. It is implied-vol mean
-reversion, and naming it after the premium would have been wrong. Gross Sharpe 3.15 (t=2.91), net of half the
-quoted spread 1.35 (t=1.12), break-even 0.886 — it can pay 89% of the quoted
-bid-ask per crossing. On 66 formation dates at a 60-day hold, which is about
-*one* independent observation, and it is the survivor of ~145 configurations,
-so the performance number is a hypothesis rather than a result.
+reversion, and naming it after the premium would have been wrong. (That
+attribution is reliable as a *ranking* only — across two years its residual is
+47.6% of the option leg, as large as the biggest named term, though vega still
+exceeds gamma+theta by ~8x.)
+
+**Adding 2024 roughly halves it.** Every parameter was chosen on 2025. Two-year
+numbers: gross Sharpe 1.55 (from 3.15), net of half the quoted spread **0.10**
+(from 1.35, t=0.15 — indistinguishable from zero), break-even 0.535 (from
+0.886, against the 0.5 needed), on 152 formation dates. Out of sample 2024 is
+gross 1.29 against 2025's 3.32 on identical rules. It looks substantially
+fitted to 2025, and the report leads with that.
+
+What survives the second year is the *ordering* — z-score > VRP-RV > VRP-GARCH
+> IV-level, with the level control losing in both years — the decile gradient,
+which is cleaner on two years than one (0-6 positive, 7-9 negative, where 2025
+alone had a noisy middle), and the execution mechanics. Not the magnitude.
+
+**Two bugs worth remembering, both of which flattered the result.** The panel
+builder took its symbol list from `available_option_symbols()`, which defaults
+to the 2025 store, so the out-of-sample year was silently restricted to names
+that survived into 2025 — textbook survivorship bias, in the worst possible
+place, and it doubled 2024's apparent Sharpe (2.54 against a true 1.29). And
+`panel.main()` did not pass `years` through, so a backfill landing mid-session
+widened the panel to a year present for only the first 20 symbols
+alphabetically. Both produced plausible numbers and no error. Check a panel's
+year and symbol distribution before trusting a run.
 
 The mechanics are the durable part. **Holding to expiry** halves the spread
 bill because a settled position never crosses a second time — arithmetic, not
 an estimate — and it is the single largest lever in the study (break-even 0.202
 to 0.886 at a 60-day tenor). **Tenor matters more than any swept parameter**:
-gross roughly doubles from 30 to 60 days, and 60 is the only tenor that
-survives a real liquidity screen, because ATM vega grows as sqrt(T) while
+60 is the only tenor that survives a real liquidity screen, because ATM vega grows as sqrt(T) while
 quoted spreads stay tick-driven (`cost_efficiency.py`: spread per dollar of
 vega falls 46% from 30 to 120 days and another 2.5x across open-interest
 buckets, while underlying price does not move it at all). **A short-dated
@@ -221,7 +241,8 @@ implied-vol sort ranks the earnings calendar** — the fraction of contracts wit
 an announcement before expiry runs 0.07 to 0.75 across deciles at 30 days and
 is flat at 0.99 at 120 — but the P&L comes from the names *without* one, so
 earnings is a contaminant of the ranking rather than a source of returns, and
-excluding it doubles gross Sharpe. 60 days is where cost efficiency and
+excluding it helps (though by far less on two years than one). 60 days is
+where cost efficiency and
 earnings-avoidance balance: longer is cheaper but almost every long contract
 spans an announcement, so the screen leaves nothing to trade. The **IV-level
 control loses** (-1.35), so the sort is not a low-vol tilt; the textbook
