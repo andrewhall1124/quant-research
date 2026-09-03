@@ -203,9 +203,22 @@ def run(years: list[int], universe_path: str, chunk_size: int) -> None:
         print(f"=== {year} ===")
         frames.append(check_year(year, Path(universe_path), chunk_size))
 
-    checks_df = pl.concat(frames, how="vertical_relaxed").sort("year", "status", "symbol")
+    checks_df = pl.concat(frames, how="vertical_relaxed")
 
     output_path = paths.SYMBOLOGY_CHECK
+    # Accumulate. Each run is given one year, so writing only what it computed
+    # would drop every year checked before it — and the table is the record of
+    # which symbol-years are safe to use.
+    if output_path.exists():
+        kept = pl.read_parquet(output_path).filter(~pl.col("year").is_in(years))
+        if kept.height and kept.columns == checks_df.columns:
+            checks_df = pl.concat([kept, checks_df], how="vertical_relaxed")
+        elif kept.height:
+            print(
+                f"  discarding {kept.height} rows from an older schema"
+                f" ({sorted(set(kept['year'].to_list()))}); re-run those years"
+            )
+    checks_df = checks_df.sort("year", "status", "symbol")
     temp_path = output_path.with_suffix(output_path.suffix + ".tmp")
     checks_df.write_parquet(temp_path)
     os.replace(temp_path, output_path)
