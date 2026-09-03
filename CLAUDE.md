@@ -81,6 +81,20 @@ findings index at the bottom.
   `split_adjusted_return()`, never a bare `close.diff()`. The split session
   itself can still be corrupt: NVDA's 2024-06-10 high is 195.95 against a real
   range near 117-123.
+- **Spinoffs are an unhandled corporate action, and they look exactly like an
+  unadjusted split.** `corporate_actions.py` pulls splits and dividends only,
+  so the raw series keeps the whole price drop on the ex-date while Yahoo
+  adjusts it away: FTV shows -31.7% on 2025-06-30 (Ralliant) and HON -6.2% on
+  2025-10-30 (Solstice); 2024 has GE Vernova, MMM's Solventum and Jacobs'
+  Amentum. `split_adjusted_return()` does **not** catch these — there is no
+  split row to apply. `data_pipelines.symbology` reports them per symbol-year
+  as `action_gap_days`. NOT YET FIXED; fix belongs in `corporate_actions.py`.
+- **`ticker_check` marks MNST `mismatch`, and it is wrong.** `trusted_symbols()`
+  therefore drops Monster from every study that filters on it. MNST's daily
+  returns match Yahoo's to 2e-8; the flag is split-bookkeeping noise of the
+  same kind that made the first symbology check condemn APH. Prefer
+  `symbology_check.parquet`, which judges on returns and clears both.
+  NOT YET FIXED.
 - **Delisted names get a zero row, not a missing row.** HES 2025-07-18, JNPR
   2025-07-02, K 2025-12-11 each end with open=high=low=close=0 (HES with real
   volume attached). Zero, not null, so nothing downstream flags it.
