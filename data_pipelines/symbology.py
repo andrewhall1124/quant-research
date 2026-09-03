@@ -16,10 +16,28 @@ backfill it becomes worse in two ways:
 
 The stock endpoint cannot arbitrate, because the free stock tier refuses
 anything before 2023-06-01. The option rows can: every greeks row carries
-`underlying_price`, struck at the same instant as the quote. Comparing that to
-Yahoo's close for the same name — Yahoo serves a renamed company's whole
-history under its modern ticker — separates "we pulled the right company" from
-"we pulled whatever answered".
+`underlying_price`, struck at the same instant as the quote. Yahoo serves a
+renamed company's whole history under its modern ticker, so the two can be
+compared — but **on returns, not on price levels**.
+
+Comparing levels does not work, and the first version of this check that tried
+it flagged APH and MNST for 2024 as different companies when both were right.
+Yahoo back-adjusts splits into its closes and the two vendors disagree about
+which splits apply to which window: APH's stored 2024 spot is exactly 2.000x
+Yahoo's on all 252 days, MNST's flag traced to a split dated 2026-08-11, and
+the repo's own stock-based `ticker_check` calls APH "ok" to 2.2e-8 over the
+same 2025 dates where the raw ratio is a clean 2.0. Any level comparison is
+really a test of split bookkeeping, in which a genuine rename hides.
+
+Log returns are immune to all of it. A split is a single outlier day, and a
+constant price ratio differences away to nothing. Measured on 2024:
+
+    same company      corr 1.0000, median |return difference| 0.0000
+    APH vs KO         corr -0.14,  0.0099
+    MNST vs XOM       corr  0.06,  0.0111
+    KO vs JNJ         corr  0.43,  0.0052   (two staples: the hardest case)
+
+so the two populations do not come close to touching.
 
 Costs no ThetaData requests at all: it reads the greeks already on disk.
 
@@ -37,14 +55,32 @@ from dotenv import load_dotenv
 
 from data_access_layer import paths
 from data_pipelines.common import normalize_ticker
-from data_pipelines.corporate_actions import build_actions, fetch_yahoo, split_factors
+from data_pipelines.corporate_actions import fetch_yahoo
 
 load_dotenv()
 
-# A median disagreement wider than this is a different instrument, not a data
-# quirk. `corporate_actions.py` uses the same tolerance against stock closes.
-CLOSE_TOLERANCE = 0.02
+# The **median** return difference is the discriminator, not the correlation.
+# Same company: 0.0000 (2e-8 in practice, which is float noise). Different
+# company: 0.005 to 0.011. Five orders of magnitude of daylight, and a median
+# cannot be moved by the one-day events below.
+#
+# Correlation is kept as a diagnostic but must not decide anything. A single
+# unadjusted corporate action drags it far down while the company is right:
+# FTV 2025 scores 0.70 and HON 0.97 on one spinoff day each, with 248 of 249
+# days agreeing to 7e-8.
+MAX_MEDIAN_RETURN_DIFFERENCE = 0.001
+CLEARLY_WRONG_RETURN_DIFFERENCE = 0.005
 MIN_OVERLAP_DAYS = 20
+
+# A day where the two vendors disagree by more than this is a corporate action
+# one of them has adjusted for and the other has not — a spinoff, or a split
+# outside the window. Counted and reported, never used to condemn a symbol.
+CORPORATE_ACTION_RETURN_GAP = 0.05
+
+# A split lands as one ~0.69 log-return day in whichever series has not been
+# back-adjusted. Dropping the tails keeps it from moving the correlation; the
+# median would survive it anyway.
+MAX_ABSOLUTE_LOG_RETURN = 0.3
 
 
 def read_stored_spots(year: int) -> pl.DataFrame:
@@ -104,62 +140,57 @@ def check_year(year: int, universe_path: Path, chunk_size: int) -> pl.DataFrame:
     print(f"  {len(wanted)} symbols, {named.height:,} symbol-days; asking Yahoo")
     quotes_df = fetch_yahoo(wanted, date(year, 1, 1), chunk_size)
 
-    pairs = list(
-        zip(
-            mapping_df["symbol"].to_list(),
-            mapping_df["yahoo_symbol"].to_list(),
-        )
-    )
-    actions_df = build_actions(quotes_df, pairs)
-
-    # ThetaData spot is raw; Yahoo back-adjusts splits into its close. Undo the
-    # splits that fall after each date so the two are on the same footing.
-    factors_df = split_factors(actions_df, named.select("symbol", "date"))
-    adjusted = (
-        named.join(factors_df, on=["symbol", "date"], how="left")
-        .with_columns(pl.col("split_factor").fill_null(1.0))
-        .with_columns((pl.col("theta_spot") / pl.col("split_factor")).alias("theta_adjusted"))
-    )
-
     yahoo_df = (
         quotes_df.join(mapping_df, on="yahoo_symbol", how="inner")
         .select("symbol", "date", "yahoo_close")
         .filter(pl.col("yahoo_close") > 0)
+        .filter(pl.col("date") <= date(year, 12, 31))
     )
 
-    compared = (
-        adjusted.join(yahoo_df, on=["symbol", "date"], how="inner")
+    returns = (
+        named.join(yahoo_df, on=["symbol", "date"], how="inner")
+        .sort("symbol", "date")
         .with_columns(
-            ((pl.col("theta_adjusted") - pl.col("yahoo_close")).abs() / pl.col("yahoo_close"))
-            .alias("difference")
+            pl.col("theta_spot").log().diff().over("symbol").alias("theta_return"),
+            pl.col("yahoo_close").log().diff().over("symbol").alias("yahoo_return"),
         )
-        .group_by("symbol")
-        .agg(
-            pl.len().alias("overlap_days"),
-            pl.col("difference").median().alias("median_difference"),
-            pl.col("difference").quantile(0.99).alias("p99_difference"),
+        .drop_nulls(["theta_return", "yahoo_return"])
+        .filter(
+            (pl.col("theta_return").abs() < MAX_ABSOLUTE_LOG_RETURN)
+            & (pl.col("yahoo_return").abs() < MAX_ABSOLUTE_LOG_RETURN)
         )
+    )
+
+    returns = returns.with_columns(
+        (pl.col("theta_return") - pl.col("yahoo_return")).abs().alias("return_gap")
+    )
+    compared = returns.group_by("symbol").agg(
+        pl.len().alias("overlap_days"),
+        pl.corr("theta_return", "yahoo_return").alias("return_correlation"),
+        pl.col("return_gap").median().alias("median_return_difference"),
+        (pl.col("return_gap") > CORPORATE_ACTION_RETURN_GAP).sum()
+        .alias("action_gap_days"),
     )
 
     return (
         named.group_by("symbol")
         .agg(pl.len().alias("theta_days"))
         .join(compared, on="symbol", how="left")
-        .with_columns(
-            pl.lit(year).alias("year"),
-            pl.col("overlap_days").fill_null(0),
-        )
+        .with_columns(pl.lit(year).alias("year"), pl.col("overlap_days").fill_null(0))
         .with_columns(
             pl.when(pl.col("overlap_days") < MIN_OVERLAP_DAYS)
             .then(pl.lit("thin_overlap"))
-            .when(pl.col("median_difference") <= CLOSE_TOLERANCE)
+            .when(pl.col("median_return_difference") <= MAX_MEDIAN_RETURN_DIFFERENCE)
             .then(pl.lit("ok"))
-            .otherwise(pl.lit("wrong_instrument"))
+            .when(pl.col("median_return_difference") >= CLEARLY_WRONG_RETURN_DIFFERENCE)
+            .then(pl.lit("wrong_instrument"))
+            .otherwise(pl.lit("suspect"))
             .alias("status")
         )
         .select(
             "year", "symbol", "theta_days", "overlap_days",
-            "median_difference", "p99_difference", "status",
+            "return_correlation", "median_return_difference",
+            "action_gap_days", "status",
         )
         .sort("status", "symbol")
     )
@@ -181,10 +212,22 @@ def run(years: list[int], universe_path: str, chunk_size: int) -> None:
 
     print(f"\ndone in {time.perf_counter() - started:.1f}s | wrote {output_path}")
     print(checks_df.group_by("year", "status").len().sort("year", "status"))
-    suspect = checks_df.filter(pl.col("status") == "wrong_instrument")
-    if suspect.height:
+    wrong = checks_df.filter(pl.col("status") == "wrong_instrument")
+    if wrong.height:
         print("\nthese symbol-years are a different company and must be dropped:")
+        print(wrong)
+    suspect = checks_df.filter(pl.col("status") == "suspect")
+    if suspect.height:
+        print("\nthese landed between the two populations and need a human:")
         print(suspect)
+    actions = checks_df.filter(pl.col("action_gap_days") > 0)
+    if actions.height:
+        print(
+            f"\n{actions.height} symbol-years carry a day the two vendors disagree"
+            " about by >5% — an unadjusted corporate action, most often a spinoff."
+            " The symbol is fine; the return on that day is not:"
+        )
+        print(actions.select("year", "symbol", "action_gap_days", "median_return_difference"))
 
 
 def main() -> None:
