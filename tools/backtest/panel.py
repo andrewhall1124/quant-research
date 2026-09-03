@@ -256,11 +256,20 @@ def main() -> None:
         print(f"{SELECTION_PATH} exists; pass --refresh to rebuild")
         return
 
-    symbols = paths.available_option_symbols()
+    # Default to every year on disk, but say which — a backfill landing
+    # mid-session otherwise widens the panel silently, and a year present for
+    # only the first few symbols alphabetically is a lopsided sample that looks
+    # like data rather than like a bug.
+    years = args.years or paths.available_years("option_greeks")
+    symbols = sorted(
+        {s for year in years for s in paths.available_option_symbols(year=year)}
+    )
     if args.limit:
         symbols = symbols[: args.limit]
+    print(f"years: {years} | symbols: {len(symbols)}", flush=True)
     build_selection_panel(
         symbols=symbols,
+        years=years,
         start=args.start,
         end=args.end,
         min_dte=args.min_dte,

@@ -15,9 +15,12 @@ measured directly — is the worst of the four signals tried.
 
 Findings, methods and intuition are in **[REPORT.md](REPORT.md)**.
 
-The short version: gross Sharpe 3.15, and it can pay 89% of the quoted bid-ask
-on every crossing and still make money. On 66 formation dates, which is about
-one independent observation.
+The short version, on 2024 + 2025: gross Sharpe 1.55, net of half the quoted
+spread **0.10**, break-even 0.535 against the 0.5 needed. On 2025 alone those
+were 3.15, 1.35 and 0.886 — so adding the out-of-sample year roughly halves the
+gross result and takes the net result to zero. It looks substantially fitted to
+2025. What survives the second year is the ordering of signals and the
+mechanics of execution, not the size of the edge.
 
 ## Run it
 
@@ -73,10 +76,10 @@ those tables is a controlled comparison rather than a separate backtest.
 
 ## Three things to know before reading the numbers
 
-1. **The sample is one year and the strategy holds for 60 days.** 66 formation
-   dates is roughly one independent observation. The net result is not
-   statistically distinguishable from zero, and `REPORT.md` §7 says so before
-   it says anything else.
+1. **Two years is about two independent observations at a 60-day hold.** 152
+   formation dates. The net result (t = 0.15) is not distinguishable from
+   zero, and the out-of-sample year is three times weaker than the in-sample
+   one — 1.29 against 3.32 gross.
 2. **This configuration survived a long search** — roughly 145 were evaluated.
    Treat t-statistics as ranking devices, not p-values.
 3. **The mechanics generalise even though the performance number may not.**

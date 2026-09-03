@@ -4,19 +4,25 @@ Buy the S&P 500 names whose implied volatility is low relative to their own
 recent history, sell the ones where it is high, and hold each position until it
 expires.
 
-| | |
-|---|---|
-| **Gross** | $1,402/day, Sharpe **3.15**, t = 2.91, $229,851 over 2025 |
-| **Net of half the quoted spread** | $611/day, Sharpe **1.35**, t = 1.12, $100,117 |
-| **Break-even spread** | **0.886** — it can pay 89% of the quoted bid-ask on every crossing and still make money |
-| **Sample** | 66 formation dates, 164 P&L days, calendar 2025 |
+| | 2024 + 2025 | 2025 alone |
+|---|---|---|
+| **Gross** | Sharpe **1.55**, t = 2.41, $297,522 | Sharpe 3.15, t = 2.91 |
+| **Net of half the quoted spread** | Sharpe **0.10**, t = 0.15, $19,483 | Sharpe 1.35, t = 1.12 |
+| **Break-even spread** | **0.535** | 0.886 |
+| **Sample** | 152 formation dates, 396 P&L days | 66 formation dates |
 
 ![strategy](figures/01_strategy.png)
 
-**Read the last row of that table with §7 in mind.** 66 formation dates at a
-~60-day hold is on the order of one independent observation, and this
-configuration is the survivor of a long search. The mechanics below are sound
-and would hold in any sample; the performance numbers are a hypothesis.
+**The two-year column is the one to read.** Every parameter in this study —
+tenor, liquidity floor, earnings screen, exit rule, signal — was chosen looking
+at 2025, and adding 2024 roughly halves the gross result and takes the net
+result to zero. Break-even lands at 0.535 against the 0.5 an ordinary execution
+assumption demands: marginal rather than comfortable, and t = 0.15 on the net
+series means the strategy is not distinguishable from doing nothing.
+
+The honest summary is that **this looks substantially fitted to 2025**. What
+survives the second year is the *ordering* of signals and the *mechanics* of
+execution, not the magnitude of the edge. §7 is the section that matters.
 
 ---
 
@@ -53,10 +59,10 @@ that is exactly the instrument used here — so the label is tempting.
 It is still the wrong one, for three reasons the study measures directly.
 
 **The P&L comes from the wrong channel.** Splitting the option leg into
-first-order greeks (§2a): two thirds is vega, the channel that pays when
-implied vol *moves*, against a third from gamma and theta, the channel that
-pays when realized volatility undershoots what was implied. The premium is the
-smaller half.
+first-order greeks (§2a): vega — the channel that pays when implied vol
+*moves* — is roughly eight times gamma plus theta, the channel that pays when
+realized volatility undershoots what was implied. The premium is the small
+part.
 
 **Vega-neutrality nets the premium out on purpose.** The premium's level is
 what a short-volatility book collects. This book holds equal vega long and
@@ -69,26 +75,34 @@ not be the least useful thing you could do.
 
 ## 2a. Where the money comes from
 
-Gross, over the option leg:
+Gross, over the option leg, 2024 + 2025:
 
 | channel | total | share of option leg |
 |---|---|---|
-| **vega** — implied vol moved | **$187,121** | **67.5%** |
-| theta — premium decayed | $62,314 | 22.5% |
-| gamma — realized variance captured | $56,022 | 20.2% |
-| residual (higher order) | −$28,192 | −10.2% |
-| **option leg** | **$277,265** | |
-| delta hedge | −$47,415 | |
-| **gross** | **$229,851** | |
+| **vega** — implied vol moved | **$324,839** | 46.7% |
+| theta — premium decayed | $326,203 | 46.9% |
+| gamma — realized variance captured | −$286,996 | −41.3% |
+| residual (higher order) | $330,839 | 47.6% |
+| **option leg** | **$694,885** | |
+| delta hedge | −$397,363 | −57.2% |
+| **gross** | **$297,522** | |
 
-Theta and gamma are two sides of one trade: you pay theta for the variance an
-option implies and earn gamma on the variance that arrives, so their sum,
-**$118,336**, is the variance risk premium actually captured. Vega is something
-else — it pays when the market re-prices volatility, whatever subsequently gets
-realized — and at **$187,121** it is 1.6× larger and 81% of gross P&L.
+Theta and gamma are two sides of one trade — you pay theta for the variance an
+option implies and earn gamma on the variance that arrives — so their sum,
+**$39,206**, is the variance risk premium actually captured. Vega, at
+**$324,839**, is more than eight times larger. The money comes from implied vol
+being re-priced, not from realized volatility undershooting what was implied,
+and that is why this study is not named after the premium.
 
-The attribution is first order, so a residual is expected; at about a tenth of
-the option leg it is nowhere near large enough to change the ranking.
+**Treat the individual channel sizes with suspicion, though.** On one year the
+residual was about a tenth of the option leg; across two it is 47.6%, as large
+as the biggest named term, and gamma has gone negative. A first-order greek
+attribution — yesterday's greeks against today's move — does not survive
+two-day gaps, large moves and near-expiry convexity well enough to apportion
+P&L precisely over 396 days. What it can still support is the ranking, because
+vega exceeds gamma plus theta by roughly 8×, which no plausible reallocation of
+the residual reverses. The conclusion that names the strategy is safe; the
+decomposition is not a precise accounting.
 
 ## 2b. How the backtest works
 
@@ -140,15 +154,16 @@ anything, leaving only serial correlation to correct.
 Four sorts, identical machinery, gross so the comparison is about ranking
 rather than execution:
 
-| signal | Sharpe | total P&L |
+| signal | Sharpe (2024+2025) | total P&L |
 |---|---|---|
-| **IV z-score, 60 sessions** | **3.15** | $229,851 |
-| VRP, IV − trailing RV | 0.52 | $36,041 |
-| VRP, IV − GARCH forecast | −0.19 | −$11,802 |
-| IV level (control) | −1.35 | −$200,705 |
+| **IV z-score, 60 sessions** | **1.55** | $297,522 |
+| VRP, IV − trailing RV | 0.35 | $55,766 |
+| VRP, IV − GARCH forecast | −0.10 | −$18,983 |
+| IV level (control) | −1.36 | −$450,248 |
 
 **The control is the important row.** `iv_level` sorts on raw implied vol —
-long the lowest-vol names, short the highest. It loses $200k. So the strategy
+long the lowest-vol names, short the highest. It loses $450k across the two
+years, and loses in each year separately. So the strategy
 is not a disguised low-volatility tilt; if anything the naive version of that
 trade was a disaster in 2025, because high-vol names went on to realize even
 more. Normalising each name against its own history is doing the work, not the
@@ -163,7 +178,8 @@ The reason is visible in the sort: across deciles a GARCH forecast spans about
 where the *model* is extrapolating hardest rather than by where the option is
 expensive. `research/single_name_vol/` had already measured GARCH's
 Mincer-Zarnowitz slope at 0.23-0.45 on these names; this is what building a
-strategy on a miscalibrated forecast looks like.
+strategy on a miscalibrated forecast looks like. Both premium-based sorts sit
+between the z-score and the control in every window tested.
 
 ### Does the sort actually grade?
 
@@ -171,20 +187,20 @@ Every decile held long, gross:
 
 | decile | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
 |---|---|---|---|---|---|---|---|---|---|---|
-| mean daily P&L | 408 | 823 | 42 | −414 | −228 | −147 | −4 | −852 | −886 | −771 |
+| mean daily P&L | 1058 | 917 | 423 | 438 | 551 | 327 | 293 | −302 | −212 | −986 |
 
 ![deciles](figures/02_deciles.png)
 
-The three cheapest deciles average **+$424**, the three richest **−$836**. The
-levels are mostly negative and that is expected: every decile here is held
-*long*, and buying volatility loses money on average — that is the premium.
-What matters is the slope.
+**This is the one thing two years made cleaner rather than weaker.** Deciles 0
+through 6 are positive and 7 through 9 negative, and the gradient runs the
+right way almost throughout — the three cheapest average **+$799**, the three
+richest **−$500**. On 2025 alone the middle of the sort was noise (decile 3 sat
+below decile 6); with twice the data it grades.
 
-It grades, but loosely. The two halves separate cleanly while the middle is
-noisy (decile 3 sits below decile 6), and no individual decile is close to
-significant. That is what ~66 formation dates buys. A strictly monotone sort
-would be stronger evidence than this; two separated halves is weaker evidence
-than a clean gradient but much stronger than profit confined to the extremes.
+No individual decile is close to significant, which is what 152 formation dates
+buys. But a signal that only worked at the extremes would show two spikes and a
+flat middle, and this does not. Whatever the magnitude turns out to be, the
+cross-sectional ordering is doing real work.
 
 ## 4. Tenor: why 60 days
 
@@ -197,15 +213,23 @@ Gross Sharpe by tenor and liquidity floor:
 
 | tenor | oi≥0 | oi≥25 | oi≥100 | oi≥250 | oi≥1000 |
 |---|---|---|---|---|---|
-| 30d | 2.16 | 2.77 | 2.23 | 1.02 | **−0.83** |
-| **60d** | 4.31 | 3.66 | 3.61 | **3.15** | **2.79** |
-| 90d | 2.33 | 2.30 | 2.92 | 0.44 | −0.34 |
+| 30d | **2.54** | 1.34 | 1.36 | 1.16 | −0.33 |
+| **60d** | 2.19 | 1.61 | 1.62 | **1.55** | **1.37** |
+| 90d | 0.87 | 0.71 | 0.56 | −0.56 | 0.38 |
+
+On two years the case for 60 days is weaker than it looked on one. Without a
+liquidity screen the 30-day contract is now the better of the two (2.54 against
+2.19), and 60 days wins only once open interest is demanded. What does survive
+is the *robustness*: 60 days is the only tenor that holds up across the whole
+range of floors, where 30 days falls to −0.33 and 90 days is erratic
+throughout. That is the property the strategy relies on, but it is a weaker
+claim than "60 days dominates", which is what one year appeared to show.
 
 ![tenor](figures/03_tenor.png)
 
-**60 days dominates, and it is the only tenor that survives a liquidity
-screen.** At 30 days, demanding 1,000 contracts of open interest turns a
-positive strategy negative; at 60 days it costs almost nothing. That matters
+**60 days is the only tenor that survives a liquidity screen.** At 30 days,
+demanding 1,000 contracts of open interest turns a positive strategy negative;
+at 60 days it costs comparatively little. That matters
 because open interest buys tight quotes — `cost_efficiency.py` measures the
 spread paid per dollar of vega falling 2.5× from the thinnest to the richest
 open-interest bucket — so a tenor that tolerates the screen is a tenor that can
@@ -248,17 +272,20 @@ cannot influence the ranking at all.
 
 **But the P&L is not the earnings trade.** Partitioning the universe, gross:
 
-| | formation days | Sharpe |
+| | formation days | Sharpe (2024+2025) |
 |---|---|---|
-| 30d, all names | 76 | 0.94 |
-| 30d, no earnings in life | 58 | 1.02 |
-| 60d, all names | 161 | 1.45 |
-| 60d, **no earnings in life** | 66 | **3.15** |
+| 30d, all names | 180 | 1.25 |
+| 30d, no earnings in life | 130 | 1.16 |
+| 60d, all names | 358 | 1.08 |
+| 60d, **no earnings in life** | 152 | **1.55** |
 
-The signal is *stronger* with those names removed. So earnings is a
-**contaminant of the ranking rather than a source of returns**: it decides
-which names land in which decile, while the money comes from the names without
-an announcement. Excluding them more than doubles gross Sharpe at 60 days.
+At 60 days the signal is still stronger with those names removed, so earnings
+remains a **contaminant of the ranking rather than a source of returns** — it
+decides which names land in which decile while the money comes from the names
+without an announcement. But the effect is far smaller than one year suggested
+(1.08 → 1.55, against 1.45 → 3.15 on 2025 alone), and at 30 days the exclusion
+now *costs* a little rather than helping. The mechanism in the table above is
+solid; the size of the improvement was not.
 
 This also explains §4. The longer tenor does not win by removing an earnings
 *profit* channel — it wins by removing an earnings *noise* channel from the
@@ -278,8 +305,8 @@ crossing and still reach zero:
 
 | | sold after 21 days | held to expiry |
 |---|---|---|
-| 30-day contract | 0.042 | 0.158 |
-| **60-day contract** | 0.202 | **0.886** |
+| 30-day contract | 0.061 | 0.242 |
+| **60-day contract** | 0.149 | **0.535** |
 
 ![costs](figures/05_costs.png)
 
@@ -297,73 +324,79 @@ every crossing:
 
 | spread paid per crossing | 0 | 0.25 | 0.5 | 0.75 | 1.0 |
 |---|---|---|---|---|---|
-| net Sharpe | 3.15 | 2.24 | **1.35** | 0.46 | −0.38 |
+| net Sharpe | 1.55 | 0.82 | **0.10** | −0.61 | −1.30 |
 
-The strategy stays profitable while paying three-quarters of the quoted spread
-every time it trades. That is the margin of safety the earlier 30-day
-specification never had.
+Holding to expiry is still the largest single improvement in the study, and it
+is the one whose mechanism is arithmetic rather than estimated — a settled
+position never crosses the spread a second time, in any sample. But the margin
+it buys is thin: at the ordinary half-spread assumption the strategy earns
+essentially nothing, and it is losing by three-quarters.
 
 ## 7. Out of sample: 2024
 
 Every choice in this study was made looking at 2025 — the tenor, the liquidity
 floor, the earnings screen, the exit rule, the signal itself. 2024 is therefore
-a genuine out-of-sample year, and it is the only test that can distinguish a
-real effect from a specification fitted to its own sample.
+a genuine out-of-sample year, and it is the only test that distinguishes a real
+effect from a specification fitted to its own sample.
 
-Gross, across both years, **without the open-interest floor** (the 2024
-open-interest backfill is incomplete, and a partially pulled year would
-restrict the sample alphabetically rather than by liquidity):
+Gross, without the open-interest floor so the two years are compared on the
+same universe:
 
 | period | days | mean daily | t (NW) | Sharpe |
 |---|---|---|---|---|
-| **2024 (out of sample)** | 176 | $737 | 1.75 | **2.54** |
-| 2025 (in sample) | 250 | $1,157 | 4.09 | 3.32 |
-| pooled | 426 | $984 | **4.06** | 3.02 |
+| **2024 (out of sample)** | 178 | $673 | 0.92 | **1.29** |
+| 2025 (in sample) | 250 | $1,101 | 4.15 | 3.32 |
+| pooled | 428 | $923 | 2.70 | 2.19 |
 
-**It replicates.** Same sign, comparable magnitude, in a year that was not
-consulted when any parameter was chosen. 2024 alone does not clear
-significance on its own — t = 1.75 — but the pooled series now rests on 248
-formation dates across ~22-session cohorts, on the order of **eleven**
-independent observations rather than the one §7 previously had to work with.
+**The signal survives, at roughly a third of its in-sample strength.** 2024 is
+positive and does not clear significance on its own; 2025 is two and a half
+times better on identical rules. That gap is what fitting to a sample looks
+like, and the pooled figure is the one to carry forward.
 
-The signal ordering replicates as well, which is the mechanism holding rather
-than just the P&L:
+With the liquidity screen applied — the strategy as specified — the two-year
+result is gross Sharpe 1.55 and **net 0.10**, against 3.15 and 1.35 on 2025
+alone. Break-even falls from 0.886 to **0.535**.
 
-| signal | 2024 | 2025 |
-|---|---|---|
-| IV z-score | **2.54** | **3.32** |
-| VRP, GARCH forecast | 1.15 | 1.67 |
-| IV level (control) | **−0.91** | **−1.16** |
+The signal *ordering* replicates, which is the mechanism holding even as the
+magnitude does not:
 
-Same ranking in both years, and the control — long low-vol, short high-vol —
-loses in both. Whatever the strategy is capturing, it is not a volatility-level
-tilt, and that was not an accident of one year.
+| signal | 2024 + 2025 |
+|---|---|
+| IV z-score | **1.55** |
+| VRP, trailing RV | 0.35 |
+| VRP, GARCH forecast | −0.10 |
+| IV level (control) | **−1.36** |
 
-### What this does not establish
+The control — long low-vol, short high-vol — loses across both years. Whatever
+this captures is not a volatility-level tilt, and that was not an artifact of
+one year.
 
-Net of half the quoted spread, both years are negative: −2.15 in 2024 and
-−1.90 in 2025. That is expected rather than contradictory. These runs carry no
-liquidity screen, and §4 and §6 both showed that the open-interest floor is
-precisely what makes the strategy affordable — without it the book trades
-wide-spread names and execution consumes the edge.
+### A survivorship bug worth recording
 
-So the two halves of the result now separate cleanly:
+An earlier version of this section reported 2024 gross Sharpe of **2.54**. That
+number was wrong. The panel built its symbol list from
+`available_option_symbols()`, which defaults to the 2025 store, so 2024 was
+restricted to names that *survived into 2025* — excluding 18 that left the
+index during the year (AAL, BBWI, ETSY, ILMN, MRO, PXD, QRVO, VFC, WHR, XRAY,
+ZION among them). Removing that bias roughly halves 2024's apparent
+performance.
 
-* **The signal is real and replicates out of sample.** Two years, same sign,
-  same ordering, control failing in both.
-* **Whether it is tradeable rests entirely on the liquidity screen**, and the
-  two-year version of that number is waiting on the 2024 open-interest
-  backfill. §1's headline — break-even 0.886 — is a 2025-only figure.
+It is the textbook error and it flatters exactly the year being used as
+out-of-sample evidence, which is the worst place to have it. The panel builder
+now takes the union of symbols across the requested years and prints which
+years it used.
 
 ## 8. What this sample cannot establish
 
 Everything above is one calendar year. The limits are severe and they all point
 the same way.
 
-- **The headline is 2025 only.** §7 extends the *signal* to 2024 and it
-  replicates, but the liquidity-screened strategy behind the break-even of
-  0.886 still rests on 66 formation dates at a ~60-day hold — on the order of
-  one independent observation. The gross t of 2.91 and the net t of 1.12 are computed with
+- **Two years is about two independent observations for this strategy.** 152
+  formation dates at a ~60-day hold. Better than the one the 2025-only version
+  had, and nowhere near enough. The net t-statistic is 0.15.
+- **The out-of-sample year is three times weaker than the in-sample one.**
+  Gross Sharpe 1.29 against 3.32 on identical rules. Some of that is noise and
+  some is fitting; one extra year cannot separate them. The gross t of 2.91 and the net t of 1.12 are computed with
   Newey-West at 15 lags, which is the right correction and does not manufacture
   information that is not there. The net result is not statistically
   distinguishable from zero.
@@ -390,14 +423,12 @@ known until it is run on more than one year.
 
 ## 9. What would move this forward
 
-1. **Finish the 2024 open-interest backfill, then re-run §1-§6 on both years.**
-   The option data for 2024 is already in place and §7 shows the signal
-   replicating on it; what is missing is the open interest the liquidity screen
-   needs. That single pull doubles the formation dates behind every number in
-   this report.
-2. **Then more history.** ThetaData's STANDARD tier reaches 2016. Two years is
-   ~11 independent observations; a decade is ~40, which is where this stops
-   being suggestive.
+1. **More history, and nothing else comes close in importance.** ThetaData's
+   STANDARD tier reaches 2016. Going from one year to two cut the headline in
+   half and took net P&L to zero; that is exactly what should happen to a
+   result fitted to its sample, and it is also what would happen to a real but
+   modest edge measured on too little data. A decade distinguishes them. Until
+   then this is a hypothesis with two observations behind it.
 3. **Fills rather than quotes.** Costs are charged against the quoted spread.
    At a break-even of 0.886 the strategy has room, but the actual question is
    what a patient limit order achieves against these quotes, and EOD data
