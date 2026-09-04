@@ -135,9 +135,23 @@ def available_option_symbols(
 
 
 def describe_store() -> str:
-    """Human-readable inventory: what is present, what is missing, how big."""
+    """Human-readable inventory: what is present, what is missing, how big.
+
+    Lists the year-stamped backfill directories too, which are not in
+    `DATASETS` because that maps a name to a single path.
+    """
     lines = []
+    for dataset in OPTION_DIR_PREFIXES:
+        for year in available_years(dataset):
+            directory = option_dir(dataset, year)
+            files = list(directory.glob("*.parquet"))
+            size = sum(file.stat().st_size for file in files)
+            lines.append(
+                f"{dataset + ' ' + str(year):<20} {len(files):>4} files  {size / 1e9:6.2f} GB"
+            )
     for name, path in DATASETS.items():
+        if name in OPTION_DIR_PREFIXES:
+            continue
         if not path.exists():
             lines.append(f"{name:<15} MISSING  {path}")
         elif path.is_dir():

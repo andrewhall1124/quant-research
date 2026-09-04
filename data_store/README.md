@@ -18,9 +18,15 @@ them means re-deriving each one by hand.
 | `underlying_2025.parquet` | `underlying` | `load_underlying` | 128,542 | 2025-01-02 → 2025-12-31 |
 | `underlying_history.parquet` | `underlying --start 2023-06-01` | `load_underlying(with_history=True)` | 203,496 | 2023-06-01 → 2024-12-31 |
 | `option_greeks/<SYM>.parquet` | `option_greeks` | `load_option_greeks` | 114,365,634 | 2025, 519 files, 8.5 GB |
-| `option_greeks_<YYYY>/<SYM>.parquet` | `option_greeks --year YYYY` | `load_option_greeks(years=YYYY)` | — | backfill years |
+| `option_greeks_2024/<SYM>.parquet` | `option_greeks --year 2024` | `load_option_greeks(years=2024)` | 104,511,492 | 2024, 516 files, 8.25 GB |
+| `option_greeks_2023/<SYM>.parquet` | `option_greeks --year 2023` | `load_option_greeks(years=2023)` | 88,135,029 | 2023, 512 files, 7.05 GB |
+| `option_greeks_2022/<SYM>.parquet` | `option_greeks --year 2022` | `load_option_greeks(years=2022)` | 85,061,633 | 2022, 513 files, 6.87 GB |
+| `option_greeks_2021/<SYM>.parquet` | `option_greeks --year 2021` | `load_option_greeks(years=2021)` | 85,799,666 | 2021, 511 files, 6.92 GB |
 | `open_interest/<SYM>.parquet` | `open_interest` | `load_open_interest` | 113,008,800 | 2025, 519 files, 438 MB |
-| `open_interest_<YYYY>/<SYM>.parquet` | `open_interest --year YYYY` | `load_open_interest(years=YYYY)` | — | backfill years |
+| `open_interest_2024/<SYM>.parquet` | `open_interest --year 2024` | `load_open_interest(years=2024)` | 104,498,601 | 2024, 516 files, 0.41 GB |
+| `open_interest_2023/<SYM>.parquet` | `open_interest --year 2023` | `load_open_interest(years=2023)` | 88,123,911 | 2023, 512 files, 0.38 GB |
+| `open_interest_2022/<SYM>.parquet` | `open_interest --year 2022` | `load_open_interest(years=2022)` | 86,547,057 | 2022, 514 files, 0.37 GB |
+| `open_interest_2021/<SYM>.parquet` | `open_interest --year 2021` | `load_open_interest(years=2021)` | 87,736,964 | 2021, 511 files, 0.19 GB |
 | `index_greeks_2025/<ROOT>.parquet` | `option_greeks --symbols` | `load_option_greeks(index=True)` | 9,768,195 | 2025, 4 files, 0.79 GB |
 | `indices.parquet` | `reference` | `load_indices`, `load_index_closes` | 5,531 | 2024-01-02 → 2025-12-31 |
 | `yields.parquet` | `reference` | `load_yields` | 2,000 | 2024-01-02 → 2025-12-31 |
@@ -100,6 +106,39 @@ Read these once; they explain most of the per-dataset notes.
   protecting, and it is why prices are never taken from a second vendor.
 
 ---
+
+## The 2021-2024 backfill
+
+363.5 M contract-days added over five pulls, ~29 GB, with **zero failed
+requests** in roughly 520,000. Each year took ~2 hours for greeks and ~1.5
+hours for open interest, run strictly one at a time.
+
+**Coverage is not the full universe, and the gap is renames.** The universe
+carries today's ticker at every historical date, so a name that has since been
+renamed is requested under a symbol that did not exist then. Most fail safely —
+NoDataFound, no file written — leaving 2 to 6 constituents absent per year:
+
+| Year | Members | Pulled | Absent |
+|---|---|---|---|
+| 2021 | 521 | 511 | BALL, EG, ELV, PSKY, RVTY, SW + the 4 deleted below |
+| 2022 | 520 | 513 | COR, EG, MBC, PSKY, RVTY, SW + DOC |
+| 2023 | 515 | 512 | PSKY, SW + DOC |
+| 2024 | 518 | 516 | FISV, PSKY |
+
+**Six symbol-years were pulled, found to be a different company, and deleted.**
+This is the failure that does *not* announce itself, and `symbology.py` is the
+only thing standing between it and a study:
+
+| Deleted | ThetaData served | The universe meant |
+|---|---|---|
+| META 2021 | $13.90–16.90 | Facebook at $245–382, then `FB` |
+| GEN 2021 | $0.42–1.14 | Gen Digital at $19.51–28.67, then `NLOK` |
+| COR 2021 | $0.00–172.51 | Cencora at $96.50–133.77, then `ABC` |
+| DOC 2021, 2022, 2023 | $13.71–19.55 | Healthpeak at $21.61–37.36, then `PEAK` |
+
+Healthpeak took the `DOC` ticker on 2024-03-01 on merging with Physicians
+Realty Trust, which is what ThetaData was serving; DOC 2024 is clean. **Always
+consult `symbology_check.parquet` before using a backfill year.**
 
 ## `universe.parquet` — point-in-time S&P 500 membership
 
