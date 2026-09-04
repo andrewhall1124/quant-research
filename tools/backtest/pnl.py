@@ -331,18 +331,30 @@ def compute_pnl(
     )
 
     if hedge_delta:
-        # Yesterday's delta against today's move. The stock change is
-        # split-adjusted, and any cohort spanning a split was already cut.
+        # Yesterday's delta against today's move, hedged at the underlying
+        # price carried on the option row itself.
+        #
+        # Not the stock store: that comes from ThetaData's stock endpoint,
+        # which the account holds at FREE and which refuses anything before
+        # 2023-06-01, so a hedge built on it silently truncates a backfill to
+        # the years the stock tier allows. `underlying_price` is struck at the
+        # same instant as the option quote — the property the whole study rests
+        # on — and exists for every year the option store covers.
+        #
+        # It is raw, so a split has to be applied on its ex-date exactly as it
+        # would to a close. Cohorts spanning a split are cut in
+        # `truncate_at_failure` anyway; this keeps the arithmetic right for the
+        # ones that are not.
         spot = underlying_df.select(
-            "symbol", pl.col("date").alias("mark_date"), "close", "split_ratio"
+            "symbol", pl.col("date").alias("mark_date"), "split_ratio"
         )
         by_day = (
             by_day.join(spot, on=["symbol", "mark_date"], how="left")
             .sort([*cohort, "k"])
             .with_columns(
                 (
-                    pl.col("close") * pl.col("split_ratio").fill_null(1.0)
-                    - pl.col("close").shift(1).over(cohort)
+                    pl.col("underlying_price") * pl.col("split_ratio").fill_null(1.0)
+                    - pl.col("underlying_price").shift(1).over(cohort)
                 ).alias("d_spot"),
                 pl.col("position_delta").shift(1).over(cohort).alias("prior_delta"),
             )
@@ -359,8 +371,24 @@ def compute_pnl(
     )
 
 
+def load_split_calendar(start=None, end=None) -> pl.DataFrame:
+    """Ex-date split ratios per (symbol, date), for adjusting the hedge.
+
+    All the hedge needs from outside the option store. Prices come from the
+    option rows themselves — see `compute_pnl` — because the stock endpoint is
+    gated to 2023-06-01 on this account and would truncate any backfill.
+
+    Corporate actions run 2016 to the present, so this covers every year the
+    option store does.
+    """
+    actions_df = dal.load_corporate_actions(kind="split", start=start, end=end)
+    return actions_df.select(
+        "symbol", "date", pl.col("value").alias("split_ratio")
+    ).unique(subset=["symbol", "date"])
+
+
 def load_hedge_prices(start=None, end=None) -> pl.DataFrame:
-    """Split-adjusted stock closes for the hedge leg.
+    """Split-adjusted stock closes. Retained for studies that want the stock feed.
 
     Same discipline `research/single_name_vol/` needed: raw prices, verified
     symbols, point-in-time membership. A hedge marked against an unadjusted

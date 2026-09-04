@@ -275,6 +275,55 @@ def with_earnings_distance(prices_df: pl.DataFrame) -> pl.DataFrame:
     )
 
 
+def load_symbology_check(
+    years: int | list[int] | None = None,
+    status: str | list[str] | None = None,
+) -> pl.DataFrame:
+    """Per-symbol, per-year verdict on whether an option root is the right company.
+
+    See `data_pipelines/symbology.py`. Statuses are:
+
+    * `ok` — the option store's `underlying_price` returns match Yahoo's for
+      that ticker, so it is the company the universe claims.
+    * `thin_overlap` — fewer than 20 days of Yahoo overlap, so the check could
+      not run. **Unverified, not wrong.** It falls disproportionately on names
+      that were later delisted or acquired, because Yahoo stops serving them,
+      which makes excluding it a survivorship filter rather than a quality one.
+    * `wrong_instrument` — returns do not correlate; a different company's
+      chain filed under this ticker. Genuinely unusable.
+    """
+    frame = pl.scan_parquet(require(paths.SYMBOLOGY_CHECK, "data_pipelines.symbology"))
+    if years is not None:
+        wanted = [years] if isinstance(years, int) else list(years)
+        frame = frame.filter(pl.col("year").is_in(wanted))
+    return only_symbols(frame, status, "status").sort("year", "symbol").collect()
+
+
+def usable_symbol_years(years: int | list[int] | None = None) -> pl.DataFrame:
+    """(symbol, year) pairs whose option data is not known to be the wrong company.
+
+    The survivorship-safe replacement for `trusted_symbols` on a multi-year
+    sample. `trusted_symbols` reads `ticker_check`, which was built against the
+    2025 universe, so applying it to earlier years silently drops the names that
+    did not survive to 2025 — 84 of 511 symbols in 2021, and the bias grows the
+    further back the sample reaches.
+
+    Only `wrong_instrument` is excluded here. `thin_overlap` is kept, because it
+    means the check could not run rather than that it failed, and the names it
+    covers are precisely the ones a survivorship filter would remove. The cost
+    of keeping them is that their split adjustments are unverified — Yahoo has
+    no history to check against — so a split in one of those names is not
+    caught. Splits are rare enough that this is the better trade, but it is a
+    trade.
+    """
+    checks_df = load_symbology_check(years)
+    return (
+        checks_df.filter(pl.col("status") != "wrong_instrument")
+        .select("symbol", "year")
+        .unique()
+    )
+
+
 def trusted_symbols() -> list[str]:
     """Symbols whose split adjustment has been verified against a second source."""
     return load_ticker_check("ok")["symbol"].to_list()

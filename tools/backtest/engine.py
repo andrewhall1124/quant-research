@@ -51,6 +51,11 @@ def build_returns(start: date | None = None, end: date | None = None) -> pl.Data
     It widens the membership table to match, so the extra years survive the
     `in_universe` filter instead of being dropped straight back out.
     """
+    # `trusted_symbols` reads the 2025-era ticker check, so it is only safe on
+    # a 2025 sample; on a backfill it drops the names that did not survive.
+    # Returns are only needed by the forecast-based signals, and the stock feed
+    # is gated to 2023-06-01 on this account, so this is deliberately limited
+    # to what that feed covers rather than to the option window.
     prices_df = dal.load_underlying(
         dal.trusted_symbols(), start, end,
         with_actions=True, in_universe=True, with_history=True,
@@ -108,6 +113,23 @@ def build_context(
     if end is not None:
         selection_df = selection_df.filter(pl.col("date") <= end)
 
+    # Drop (symbol, year) pairs where the option root is verifiably a different
+    # company than the universe claims — a backfill asks for today's ticker at
+    # every historical date, so META in 2021 returns something, just not
+    # Facebook. Only `wrong_instrument` is dropped: `thin_overlap` means the
+    # check could not run, and those are disproportionately the delisted names,
+    # so excluding them would be a survivorship filter. See
+    # `dal.usable_symbol_years`.
+    before = selection_df.height
+    selection_df = selection_df.with_columns(
+        pl.col("date").dt.year().alias("year")
+    ).join(
+        dal.usable_symbol_years(), on=["symbol", "year"], how="semi"
+    ).drop("year")
+    dropped = before - selection_df.height
+    if dropped:
+        print(f"context: dropped {dropped:,} rows on wrong-instrument symbol-years", flush=True)
+
     # Fitting GARCH and ARCH at every origin for 500 names is the one slow
     # step in layer 2, so it is cached like `single_name_vol/panel.parquet`:
     # a research artefact, rebuilt with `refresh`, never written to data_store.
@@ -125,13 +147,15 @@ def build_context(
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         forecasts_df.write_parquet(cache_path)
 
-    underlying_df = pnl_module.load_hedge_prices(forecast_start, end)
+    # Everything the P&L layer needs about the underlying now comes from the
+    # option store plus the corporate-actions table, so the backtest spans
+    # whatever years of options are on disk rather than whatever years the
+    # stock subscription allows.
+    underlying_df = pnl_module.load_split_calendar(forecast_start, end)
+    splits_df = underlying_df.filter(pl.col("split_ratio") != 1.0)
+    calendar_df = pnl_module.build_calendar(selection_df["date"].unique().to_list())
     print(f"context: {selection_df['date'].min()} .. {selection_df['date'].max()}"
-          f" | years {years}", flush=True)
-    splits_df = underlying_df.filter(pl.col("split_ratio") != 1.0).select(
-        "symbol", "date", "split_ratio"
-    )
-    calendar_df = pnl_module.build_calendar(underlying_df["date"].unique().to_list())
+          f" | years {years} | {calendar_df.height} sessions", flush=True)
 
     # Earnings distance for every (symbol, date) a structure could select. A
     # cross-sectional implied-vol sort is known to load on earnings timing, so

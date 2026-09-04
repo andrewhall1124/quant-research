@@ -207,47 +207,48 @@ attribution is reliable as a *ranking* only — across two years its residual is
 47.6% of the option leg, as large as the biggest named term, though vega still
 exceeds gamma+theta by ~8x.)
 
-**Adding 2024 roughly halves it.** Every parameter was chosen on 2025. Two-year
-numbers: gross Sharpe 1.55 (from 3.15), net of half the quoted spread **0.10**
-(from 1.35, t=0.15 — indistinguishable from zero), break-even 0.535 (from
-0.886, against the 0.5 needed), on 152 formation dates. Out of sample 2024 is
-gross 1.29 against 2025's 3.32 on identical rules. It looks substantially
-fitted to 2025, and the report leads with that.
+**On five years it does not work.** 2021-2025, 380 formation dates: gross
+Sharpe 0.74 (t=1.79), net of half the quoted spread **-0.68** (t=-1.65),
+break-even 0.260 against the 0.5 needed, losing money in **all five years**
+net. There is a real but weak gross signal — positive in four of five years,
+pooled gross t=3.20 over 1,185 days — that is about a quarter of the spread it
+must cross to capture it.
 
-What survives the second year is the *ordering* — z-score > VRP-RV > VRP-GARCH
-> IV-level, with the level control losing in both years — the decile gradient,
-which is cleaner on two years than one (0-6 positive, 7-9 negative, where 2025
-alone had a noisy middle), and the execution mechanics. Not the magnitude.
+The strategy was specified on 2025 alone and **break-even decayed monotonically
+as out-of-sample years were added: 0.886 (2025) to 0.535 (+2024) to 0.260
+(2021-2025)**. That shape is the signature of a fitted result, and each
+2025-chosen parameter reverses: 30-day tenor beats the chosen 60-day at nearly
+every liquidity floor, the decile gradient disappears (the *cheapest* decile,
+the long side, becomes the second-worst bucket), and the IV-level control that
+lost -1.35 on 2025 turns mildly positive. ~145 configurations were searched on
+what was about one independent observation.
 
-**Two bugs worth remembering, both of which flattered the result.** The panel
-builder took its symbol list from `available_option_symbols()`, which defaults
-to the 2025 store, so the out-of-sample year was silently restricted to names
-that survived into 2025 — textbook survivorship bias, in the worst possible
-place, and it doubled 2024's apparent Sharpe (2.54 against a true 1.29). And
-`panel.main()` did not pass `years` through, so a backfill landing mid-session
-widened the panel to a year present for only the first 20 symbols
-alphabetically. Both produced plausible numbers and no error. Check a panel's
-year and symbol distribution before trusting a run.
+What survives is measured directly rather than through P&L: the earnings
+mechanism (fraction of contracts with an announcement before expiry runs 0.07
+to 0.75 across deciles at 30 days, flat at 0.99 at 120), the cost arithmetic
+(holding to expiry roughly doubles break-even in every window, because a
+settled position never crosses the spread twice), and vega growing as sqrt(T)
+while quoted spreads stay tick-driven. The obstacle is entirely execution:
+index options quote at 0.242 in spread per dollar of vega against 4.69 for a
+30-day single-name straddle, ~19x cheaper, which is where this premium should
+be traded instead.
 
-The mechanics are the durable part. **Holding to expiry** halves the spread
-bill because a settled position never crosses a second time — arithmetic, not
-an estimate — and it is the single largest lever in the study (break-even 0.202
-to 0.886 at a 60-day tenor). **Tenor matters more than any swept parameter**:
-60 is the only tenor that survives a real liquidity screen, because ATM vega grows as sqrt(T) while
-quoted spreads stay tick-driven (`cost_efficiency.py`: spread per dollar of
-vega falls 46% from 30 to 120 days and another 2.5x across open-interest
-buckets, while underlying price does not move it at all). **A short-dated
-implied-vol sort ranks the earnings calendar** — the fraction of contracts with
-an announcement before expiry runs 0.07 to 0.75 across deciles at 30 days and
-is flat at 0.99 at 120 — but the P&L comes from the names *without* one, so
-earnings is a contaminant of the ranking rather than a source of returns, and
-excluding it helps (though by far less on two years than one). 60 days is
-where cost efficiency and
-earnings-avoidance balance: longer is cheaper but almost every long contract
-spans an announcement, so the screen leaves nothing to trade. The **IV-level
-control loses** (-1.35), so the sort is not a low-vol tilt; the textbook
-`IV - E[RV]` is worse than useless (-0.19) because a miscalibrated GARCH
-forecast spans 36 vol points across deciles where implied vol spans 13.
+**Two data traps this study hit, both of which flattered the result and neither
+of which errored.** (1) `trusted_symbols()` reads a check built against the
+2025 universe, so on a backfill it drops the names that did not survive — 84 of
+511 symbols in 2021. Use `dal.usable_symbol_years()`, which is per-year and
+excludes only `wrong_instrument`; keep `thin_overlap`, which means the check
+could not run and falls disproportionately on delisted names. (2) A panel
+builder taking its symbol list from `available_option_symbols()` defaults to
+2025 and silently makes every earlier year survivorship-biased — it doubled
+2024's apparent Sharpe. Check a panel's year and symbol distribution before
+trusting a run.
+
+**The stock feed is FREE tier on this account** and refuses anything before
+2023-06-01, while options reach 2021. A delta hedge built on the stock store
+therefore truncates a backfill silently. It is not needed: `underlying_price`
+rides on every greeks row, struck at the same instant as the quote, and splits
+come from `corporate_actions` (2016 onward). See `tools/backtest/pnl.py`.
 
 `research/data_quality/` — audit behind the corporate-actions work. The feed
 itself is near-spotless: over 114M stored

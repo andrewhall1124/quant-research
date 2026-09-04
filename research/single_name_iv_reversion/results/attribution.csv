@@ -1,10 +1,10 @@
 channel,pnl,pct_of_option_leg
-vega (implied vol moves),324839.1923710025,46.7
-theta (premium decay),326202.70817211457,46.9
-gamma (realized variance),-286996.3457950276,-41.3
-residual (higher order),330838.98705058027,47.6
-= option leg,694884.5417986697,100.0
-delta hedge,-397362.5599250676,-57.2
-= gross total,297521.9818736022,42.8
-mean reversion channel (vega),324839.1923710025,46.7
-variance premium channel (gamma+theta),39206.362377086945,5.6
+vega (implied vol moves),546054.4612565257,54.8
+theta (premium decay),1147895.463169861,115.1
+gamma (realized variance),-977224.418327398,-98.0
+residual (higher order),280541.1725990961,28.1
+= option leg,997266.6786980847,100.0
+delta hedge,-651212.7379918951,-65.3
+= gross total,346053.9407061896,34.7
+mean reversion channel (vega),546054.4612565257,54.8
+variance premium channel (gamma+theta),170671.04484246287,17.1

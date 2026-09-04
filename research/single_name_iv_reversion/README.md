@@ -5,28 +5,26 @@ names. Buy the names whose implied volatility is low relative to their own
 recent history, sell the ones where it is high, vega-weight both sides,
 delta-hedge daily, hold to expiry.
 
-The bet is that implied volatility mean-reverts. It is **not** a variance risk
-premium strategy, despite using the instrument that would harvest one: two
-thirds of the option P&L is vega — money made when implied vol moves — against
-a third from gamma and theta, the channel that pays when realized volatility
-undershoots implied. The premium is the smaller half, the book is vega-neutral
-so the premium's level cancels by construction, and `IV - E[RV]` — the premium
-measured directly — is the worst of the four signals tried.
-
 Findings, methods and intuition are in **[REPORT.md](REPORT.md)**.
 
-The short version, on 2024 + 2025: gross Sharpe 1.55, net of half the quoted
-spread **0.10**, break-even 0.535 against the 0.5 needed. On 2025 alone those
-were 3.15, 1.35 and 0.886 — so adding the out-of-sample year roughly halves the
-gross result and takes the net result to zero. It looks substantially fitted to
-2025. What survives the second year is the ordering of signals and the
-mechanics of execution, not the size of the edge.
+**On five years (2021-2025) the strategy does not work.** Gross Sharpe 0.74,
+net of half the quoted spread **-0.68**, break-even 0.260 against the 0.5
+needed, and it loses money in all five years net. There is a real but weak
+gross signal — positive in four of five years, pooled t = 3.20 — that is
+roughly a quarter of the spread it must cross to capture it.
+
+It was specified on 2025 alone, where it looked far better, and the break-even
+decayed monotonically as out-of-sample years were added: **0.886 → 0.535 →
+0.260**. Every parameter chosen on 2025 fails to replicate — the 60-day tenor
+(30 days is better on five years), the decile gradient (gone), the IV-level
+control (no longer loses). The study is kept as a worked negative result.
 
 ## Run it
 
 ```bash
 uv run python -m data_pipelines.open_interest                     # ~3 hr, once
-uv run python -m tools.backtest.panel --refresh --max-dte 140     # ~10 min, cached
+uv run python -m tools.backtest.panel --refresh --max-dte 115 \
+    --max-moneyness 0.07 --years 2021 2022 2023 2024 2025          # ~25 min, cached
 uv run python -m research.single_name_iv_reversion.analysis \
     --forecast-start 2023-06-01                                   # ~15 min
 uv run python -m research.single_name_iv_reversion.cost_efficiency       # ~2 min
@@ -76,10 +74,9 @@ those tables is a controlled comparison rather than a separate backtest.
 
 ## Three things to know before reading the numbers
 
-1. **Two years is about two independent observations at a 60-day hold.** 152
-   formation dates. The net result (t = 0.15) is not distinguishable from
-   zero, and the out-of-sample year is three times weaker than the in-sample
-   one — 1.29 against 3.32 gross.
+1. **The result is negative and the sample is now adequate to say so.** 380
+   formation dates over five years, net t = -6.55. This is not "too little data
+   to tell"; it is a strategy that loses to transaction costs every year.
 2. **This configuration survived a long search** — roughly 145 were evaluated.
    Treat t-statistics as ranking devices, not p-values.
 3. **The mechanics generalise even though the performance number may not.**
