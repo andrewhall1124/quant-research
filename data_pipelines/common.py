@@ -1,5 +1,6 @@
 """Shared helpers for the ThetaData pulls."""
 
+import random
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -115,7 +116,7 @@ def load_universe_tickers(
 
 
 def with_retries(
-    fetch: Callable[[str], T], symbol: str, attempts: int = 5
+    fetch: Callable[[str], T], symbol: str, attempts: int = 8
 ) -> T:
     """Retry with exponential backoff.
 
@@ -136,7 +137,13 @@ def with_retries(
             if not retryable or attempt == attempts - 1:
                 raise
             if expired:
+                # Every worker sees the dead session at once and would burn its
+                # attempts in lockstep on a channel that needs time to come
+                # back. Wait longer than the ordinary backoff, and jitter it so
+                # the workers do not retry as a thundering herd.
                 reset_client()
+                time.sleep(min(60, 5 * 2**attempt) * (0.5 + random.random()))
+                continue
             time.sleep(2**attempt)
     raise RuntimeError("unreachable")
 

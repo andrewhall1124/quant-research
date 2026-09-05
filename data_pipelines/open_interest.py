@@ -23,7 +23,7 @@ just be re-run.
 
 import argparse
 import time
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import polars as pl
@@ -34,6 +34,51 @@ from data_pipelines.common import fetch_many, load_universe_tickers, make_client
 from data_pipelines.reference import date_chunks
 
 load_dotenv()
+
+
+def is_server_fault(error: Exception) -> bool:
+    """A fault in ThetaData's own request handling, not a missing-data answer.
+
+    Seen as `INTERNAL: java.lang.ArrayIndexOutOfBoundsException`, raised for any
+    window containing a session the server cannot serialise. One such session —
+    2020-05-01 — cost 15 symbols their whole 2020 open interest, because the
+    pull asks for a year at a time and the year contains the bad day.
+    """
+    return "INTERNAL" in str(error) or "ArrayIndexOutOfBounds" in str(error)
+
+
+def is_missing_data(error: Exception) -> bool:
+    """A symbol with no listed chain in the window: not a failure of the pull."""
+    return "NoDataFound" in type(error).__name__ or "NOT_FOUND" in str(error)
+
+
+def fetch_window(
+    client, symbol: str, start_date: date, end_date: date, depth: int = 0
+) -> list[pl.DataFrame]:
+    """One window of open interest, bisecting around a server fault.
+
+    Halving until the bad session is alone loses that one day instead of the
+    whole symbol-year. Recursion is bounded by the window collapsing to a
+    single date.
+    """
+    try:
+        chunk_df = client.option_history_open_interest(
+            symbol, "*", start_date=start_date, end_date=end_date
+        )
+        return [chunk_df] if chunk_df.height else []
+    except Exception as error:
+        if is_missing_data(error):
+            return []
+        if not is_server_fault(error) or start_date >= end_date:
+            if is_server_fault(error):
+                print(f"\n  {symbol}: server fault on {start_date}, skipping that session")
+                return []
+            raise
+        midpoint = start_date + (end_date - start_date) / 2
+        return (
+            fetch_window(client, symbol, start_date, midpoint, depth + 1)
+            + fetch_window(client, symbol, midpoint + timedelta(days=1), end_date, depth + 1)
+        )
 
 
 def fetch_symbol_open_interest(
@@ -47,18 +92,7 @@ def fetch_symbol_open_interest(
     client = make_client()
     chunks = []
     for chunk_start, chunk_end in date_chunks(start_date, end_date):
-        try:
-            chunk_df = client.option_history_open_interest(
-                symbol, "*", start_date=chunk_start, end_date=chunk_end
-            )
-        except Exception as error:
-            # A symbol with no listed chain in the window is a NOT_FOUND, not a
-            # failure of the pull; anything else should surface.
-            if "NoDataFound" in type(error).__name__ or "NOT_FOUND" in str(error):
-                continue
-            raise
-        if chunk_df.height:
-            chunks.append(chunk_df)
+        chunks.extend(fetch_window(client, symbol, chunk_start, chunk_end))
 
     if not chunks:
         return symbol, 0, 0
