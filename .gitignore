@@ -25,3 +25,6 @@ tools/backtest/results/*.parquet
 
 # Playwright MCP scratch output
 .playwright-mcp/
+
+# Regenerable study caches (panel.py rebuilds in ~25s from data_store/)
+research/*/results/*.parquet

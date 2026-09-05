@@ -208,15 +208,48 @@ to the pipelines alone.
   too optimistic. It surfaced only when a hold-to-expiry mode (entry cost only)
   reported infinite break-even. Any cost model needs a test that ties total
   spend to `crossings x fraction x quoted spread x contracts`.
+- **Never rank on a mid and execute at that same mid.** A signal read off the
+  closing quote and a trade filled at the closing quote share the bid-ask
+  bounce in that print, so a name looks cheap partly *because* its mid printed
+  low and is then bought at the low mark. In `research/iv_zscore_reversion/`
+  this alone produced a gross Sharpe of 11.0 with an 85% hit rate and a
+  perfectly monotone decile gradient — all of it fake. The test is one session
+  of implementation lag (`Config.signal_lag`): it took that study from 11.02 to
+  1.09. The confirming diagnostic is to bucket the result by quoted spread
+  width; measurement error scales with the spread (9.3x across quintiles there)
+  and a real repricing does not. Any study that ranks on an option mid needs
+  both checks before it reports a Sharpe.
 
 ### Findings so far
 
-**The study directories these describe were reset in `7aada3f`; `research/` and
-`tools/` now hold only `__init__.py`.** The conclusions are kept because they
+**Every study below except `iv_zscore_reversion` was reset in `7aada3f`;
+`tools/` holds only `__init__.py`, and `research/` holds only the one study
+written since.** The conclusions are kept because they
 are about the data and the method, and remain true — but the code that produced
 them is not on `master`. Recover any of it from `a863c25`, the commit before the
 reset, which has all 87 files. Figures and CSVs referenced below are there too,
 not in the working tree.
+
+`research/iv_zscore_reversion/` — daily cross-sectional IV mean reversion in
+S&P 500 single-name straddles, 2017-2025, 2,202 formation dates, 894,767
+tradable straddle-days. Buy the cheapest decile of 60-session IV z-score, sell
+the richest, ~30-dte ATM straddles, equal dollar vega per name and per side,
+delta-hedged, held one session. **The headline result is an artefact and the
+study is about identifying it.** Same-close execution gives gross Sharpe 11.02
+(t=21.3); one session of implementation lag gives 1.09, removing 92% of the
+mean P&L and the entire decile gradient (monotone +0.48 to -0.45 vol points at
+lag 0; flat +0.02 to +0.07 at lag 1). The same-close edge scales 9.3x across
+quoted-spread quintiles and the lagged one does not — it is the bid-ask bounce
+in the quote the signal is measured from. What survives at lag 1 is earnings
+timing, not mean reversion: the rich-vol decile is the pre-earnings decile (36.8
+days to the next report vs 74.9 for the cheap decile), and excluding names
+reporting within a week takes the lag-1 Sharpe to 0.36 (t=0.94). Costs settle it
+either way — break-even is 4.6% of the quoted spread at lag 0 and 0.30% at lag
+1, against the ~50% a crossing costs, because a one-day hold pays the 11.1%
+median relative spread twice. The P&L is 103% first-order vega, so gamma and
+theta cancel over a one-day hold and this is a pure implied-vol trade. Useful
+byproduct: `results/straddle_panel.parquet`, the ~30-dte ATM straddle with
+next-session quotes for the same contracts, 1.05M symbol-days, rebuilt in ~25s.
 
 `research/single_name_iv_reversion/` — the first strategy study, and the first
 user of `tools/backtest/`. Buy the S&P 500 names whose implied vol is low
