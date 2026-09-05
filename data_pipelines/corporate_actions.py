@@ -166,66 +166,6 @@ def split_factors(actions_df: pl.DataFrame, dates_df: pl.DataFrame) -> pl.DataFr
     return pl.concat(factors, how="vertical_relaxed")
 
 
-def check_closes(
-    quotes_df: pl.DataFrame, actions_df: pl.DataFrame, pairs: list[tuple[str, str]]
-) -> pl.DataFrame:
-    """Compare split-adjusted ThetaData closes to Yahoo's, name by name."""
-    theta_df = (
-        pl.read_parquet(paths.UNDERLYING)
-        .with_columns(pl.col("created").dt.date().alias("date"))
-        .filter(pl.col("close") > 0)
-        .select("symbol", "date", pl.col("close").alias("theta_close"))
-    )
-    factors_df = split_factors(actions_df, theta_df.select("symbol", "date"))
-    adjusted = (
-        theta_df.join(factors_df, on=["symbol", "date"], how="left")
-        .with_columns(pl.col("split_factor").fill_null(1.0))
-        .with_columns((pl.col("theta_close") / pl.col("split_factor")).alias("theta_adjusted"))
-    )
-
-    mapping_df = pl.DataFrame(
-        {"symbol": [pair[0] for pair in pairs], "yahoo_symbol": [pair[1] for pair in pairs]}
-    )
-    yahoo_df = quotes_df.join(mapping_df, on="yahoo_symbol", how="inner").select(
-        "symbol", "date", "yahoo_close"
-    )
-
-    per_symbol = (
-        mapping_df.join(
-            adjusted.group_by("symbol").agg(pl.len().alias("theta_days")),
-            on="symbol", how="left",
-        )
-        .join(yahoo_df.group_by("symbol").agg(pl.len().alias("yahoo_days")), on="symbol", how="left")
-        .join(
-            adjusted.join(yahoo_df, on=["symbol", "date"], how="inner")
-            .with_columns(
-                ((pl.col("theta_adjusted") - pl.col("yahoo_close")).abs() / pl.col("yahoo_close"))
-                .alias("difference")
-            )
-            .group_by("symbol")
-            .agg(
-                pl.len().alias("overlap_days"),
-                pl.col("difference").median().alias("median_difference"),
-                pl.col("difference").quantile(0.99).alias("p99_difference"),
-            ),
-            on="symbol", how="left",
-        )
-        .with_columns(
-            pl.col("theta_days").fill_null(0),
-            pl.col("yahoo_days").fill_null(0),
-            pl.col("overlap_days").fill_null(0),
-        )
-    )
-    return per_symbol.with_columns(
-        pl.when(pl.col("theta_days") == 0).then(pl.lit("theta_missing"))
-        .when(pl.col("yahoo_days") == 0).then(pl.lit("yahoo_missing"))
-        .when(pl.col("overlap_days") < MIN_OVERLAP_DAYS).then(pl.lit("thin_overlap"))
-        .when(pl.col("median_difference") <= CLOSE_TOLERANCE).then(pl.lit("ok"))
-        .otherwise(pl.lit("mismatch"))
-        .alias("status")
-    ).sort("status", "symbol")
-
-
 def write_atomic(frame: pl.DataFrame, path: Path) -> None:
     """Write via a sibling temp file and rename.
 
@@ -245,11 +185,9 @@ def run(start: date, universe_path: str, chunk_size: int) -> None:
     started = time.perf_counter()
     quotes_df = fetch_yahoo([pair[1] for pair in pairs], start, chunk_size)
     actions_df = build_actions(quotes_df, pairs)
-    checks_df = check_closes(quotes_df, actions_df, pairs)
 
     paths.CORPORATE_ACTIONS.parent.mkdir(parents=True, exist_ok=True)
     write_atomic(actions_df, paths.CORPORATE_ACTIONS)
-    write_atomic(checks_df, paths.TICKER_CHECK)
 
     splits_df = actions_df.filter(pl.col("action") == "split")
     print(

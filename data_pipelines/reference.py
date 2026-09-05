@@ -28,8 +28,6 @@ VOL_INDICES = ["VIX1D", "VIX9D", "VIX", "VIX3M", "VIX1Y", "VVIX", "SKEW"]
 # 4.30%). Scaled to a decimal yield below.
 YIELD_INDICES = {"IRX": "13w", "FVX": "5y", "TNX": "10y", "TYX": "30y"}
 
-RATES = ["SOFR"]
-
 # ThetaData rejects any history request spanning more than 365 days, and the
 # free tier refuses index history starting before roughly 2024-01-01 (earlier
 # starts are quoted as VALUE / STANDARD / PROFESSIONAL by depth). Longer
@@ -85,26 +83,6 @@ def fetch_indices(symbols: list[str], start_date: date, end_date: date) -> pl.Da
     )
 
 
-def fetch_rates(start_date: date, end_date: date) -> pl.DataFrame:
-    client = make_client()
-    frames = []
-    for symbol in RATES:
-        for chunk_start, chunk_end in date_chunks(start_date, end_date):
-            rate_df = client.interest_rate_history_eod(symbol, chunk_start, chunk_end)
-            frames.append(
-                rate_df.select(
-                    pl.col("created").str.strptime(pl.Date, "%Y-%m-%d").alias("date"),
-                    pl.lit(symbol).alias("symbol"),
-                    (pl.col("rate") / 100).alias("rate"),
-                )
-            )
-    return (
-        pl.concat(frames, how="vertical_relaxed")
-        .unique(["date", "symbol"])
-        .sort("date", "symbol")
-    )
-
-
 def run(start_date: date, end_date: date, output_dir: str) -> None:
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -121,9 +99,6 @@ def run(start_date: date, end_date: date, output_dir: str) -> None:
         (pl.col("close") / 1000).alias("yield"),
     ).sort("date", "tenor")
     yield_df.write_parquet(paths.YIELDS)
-
-    rate_df = fetch_rates(start_date, end_date)
-    rate_df.write_parquet(paths.RATES)
 
     print(
         f"\ndone in {time.perf_counter() - started:.1f}s"

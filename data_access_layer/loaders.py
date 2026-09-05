@@ -320,20 +320,6 @@ def load_corporate_actions(
     return in_window(only_symbols(frame, symbols), start, end).sort("symbol", "date").collect()
 
 
-def load_ticker_check(status: str | list[str] | None = None) -> pl.DataFrame:
-    """Per-symbol agreement between ThetaData and Yahoo closes.
-
-    Status is "ok", "mismatch", "thin_overlap", "yahoo_missing" or
-    "theta_missing". Anything but "ok" means the two vendors disagree about
-    what that symbol is, or Yahoo has no usable history for it; those names
-    should not carry a split adjustment you trust.
-    """
-    frame = pl.scan_parquet(
-        require(paths.TICKER_CHECK, "data_pipelines.corporate_actions")
-    )
-    return only_symbols(frame, status, "status").sort("status", "symbol").collect()
-
-
 def load_earnings(
     symbols: str | list[str] | None = None,
     start: date | None = None,
@@ -429,11 +415,6 @@ def usable_symbol_years(years: int | list[int] | None = None) -> pl.DataFrame:
     )
 
 
-def trusted_symbols() -> list[str]:
-    """Symbols whose split adjustment has been verified against a second source."""
-    return load_ticker_check("ok")["symbol"].to_list()
-
-
 def load_indices(
     symbols: str | list[str] | None = None,
     start: date | None = None,
@@ -455,12 +436,6 @@ def load_index_closes(
     """
     long_df = load_indices(symbols, start, end)
     return long_df.pivot(on="symbol", index="date", values="close").sort("date")
-
-
-def load_rates(start: date | None = None, end: date | None = None) -> pl.DataFrame:
-    """SOFR overnight, as a decimal rate."""
-    frame = pl.scan_parquet(require(paths.RATES, "data_pipelines.reference"))
-    return in_window(frame, start, end).sort("date").collect()
 
 
 def load_yields(
