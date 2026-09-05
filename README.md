@@ -20,7 +20,25 @@ lives (`data_access_layer/paths.py`) and how to filter it
 
 ## Pulling data
 
-Run as modules from the repo root, so imports resolve:
+**To rebuild the whole store, run one command:**
+
+```bash
+uv run python -m data_pipelines.build --dry-run   # print the plan
+uv run python -m data_pipelines.build             # ~25 hr from empty
+```
+
+Running the pipelines by hand reproduces only the 2025 slice — every backfill
+year needs `--year`, the index roots need `--symbols` *and* `--output-dir`, and
+the pre-sample stock history and multi-year universe each need a flag. `build`
+is the list of those invocations, in dependency order, so the recipe lives in
+the repo rather than in someone's shell history.
+
+Two caveats it cannot fix: `universe` walks backwards from *today's* Wikipedia
+constituent list and `corporate_actions` runs to `date.today()` against a
+Yahoo series back-adjusted to the present, so both drift as time passes. The
+option data itself is fixed.
+
+The individual pipelines, run as modules from the repo root:
 
 ```bash
 uv run python -m data_pipelines.universe      # point-in-time S&P 500 membership

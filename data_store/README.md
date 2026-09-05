@@ -29,8 +29,8 @@ them means re-deriving each one by hand.
 | `open_interest_2021/<SYM>.parquet` | `open_interest --year 2021` | `load_open_interest(years=2021)` | 87,736,964 | 2021, 511 files, 0.19 GB |
 | `index_greeks_2025/<ROOT>.parquet` | `option_greeks --symbols` | `load_option_greeks(index=True)` | 9,768,195 | 2025, 4 files, 0.79 GB |
 | `indices.parquet` | `reference` | `load_indices`, `load_index_closes` | 5,531 | 2024-01-02 → 2025-12-31 |
-| `yields.parquet` | `reference` | `load_yields` | 2,000 | 2024-01-02 → 2025-12-31 |
-| `fred_rates.parquet` | `reference` | `load_fred_rates` | 2,430 | 2024-12-02 → 2025-12-31 |
+| `yields.parquet` | `reference` | `load_yields` | 9,048 | 2017-01-03 → 2025-12-31 |
+| `rates.parquet` | `reference` | `load_rates` | 731 | 2024-01-01 → 2025-12-31 |
 | `corporate_actions.parquet` | `corporate_actions` | `load_corporate_actions` | 16,584 | 2016-01-04 → present |
 | `symbology_check.parquet` | `symbology --years …` | read directly | — | one row per symbol-year pulled |
 | `earnings.parquet` | `earnings` | `load_earnings`, `with_earnings_distance` | 45,060 | 1999-08-02 → 2026-12-09 |
@@ -323,19 +323,6 @@ days — 731 rows for two years.
 **Gotcha.** `interest_rate_history_eod` serves *only* SOFR; there are no other
 tenors. Use `yields.parquet` or `fred_rates.parquet` for curve shape.
 
-## `fred_rates.parquet` — FRED treasury and SOFR series
-
-| Column | Type | Notes |
-|---|---|---|
-| `date` | Date | |
-| `series` | String | DGS1MO, DGS3MO, DGS6MO, DGS1, DGS2, SOFR, SOFR30/90/180DAYAVG |
-| `family` | String | `treasury`, `sofr`, `sofr_avg` |
-| `tenor_y` | Float64 | tenor in years, for interpolation |
-| `rate` | Float64 | decimal |
-
-Starts 2024-12-02, later than the other reference tables — this is the shortest
-history in the store, so check coverage before joining it to a 2024 study.
-
 ## `corporate_actions.parquet` — splits and dividends
 
 Sourced from Yahoo, because ThetaData serves raw prices and its client exposes
@@ -458,15 +445,12 @@ substitute.
 ## Rebuilding
 
 ```bash
-uv run python -m data_pipelines.universe            # seconds
-uv run python -m data_pipelines.reference           # ~1 min
-uv run python -m data_pipelines.corporate_actions   # ~30 s
-uv run python -m data_pipelines.earnings            # ~3 min
-uv run python -m data_pipelines.underlying          # 17 min
-uv run python -m data_pipelines.option_greeks       # 2.6 hr, resumable
-uv run python -m data_pipelines.option_greeks       # 2.6 hr, resumable
-uv run python -m data_pipelines.option_greeks --symbols SPX,SPXW,XSP,VIX \
-    --output-dir data_store/index_greeks_2025
+# One command rebuilds the whole store, in order, with the right flags:
+uv run python -m data_pipelines.build --dry-run   # print the 35-step plan
+uv run python -m data_pipelines.build             # ~25 hr from empty
+
+# Every per-symbol step is resumable, so this is a cheap no-op against a full
+# store and re-running after an interruption costs only what was in flight.
 ```
 
 Timings are free tier at 2 workers. `options` skips symbols already on disk, so

@@ -10,6 +10,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import polars as pl
+import yfinance as yf
 from dotenv import load_dotenv
 
 from data_access_layer import paths
@@ -24,9 +25,28 @@ INDICES = ["SPX", "RUT", "OEX", "XSP"]
 # The published VIX term structure, short end to long.
 VOL_INDICES = ["VIX1D", "VIX9D", "VIX", "VIX3M", "VIX1Y", "VVIX", "SKEW"]
 
-# CBOE treasury yield indices, quoted at 10x the yield in percent (TNX 43.0 =
-# 4.30%). Scaled to a decimal yield below.
-YIELD_INDICES = {"IRX": "13w", "FVX": "5y", "TNX": "10y", "TYX": "30y"}
+# The same four CBOE treasury yield indices, taken from Yahoo rather than
+# ThetaData. Not a preference: the free index tier refuses anything before
+# 2024-01-01, which would leave every option year from 2017 to 2023 without a
+# discount rate. Yahoo serves these back to the 1960s.
+#
+# Checked over the 249 sessions of 2025 where both sources answer: the two
+# agree to 0.000000 at the median *and* the maximum, on all four tenors. They
+# are the same CBOE index arriving by a different road.
+#
+# Yahoo quotes the yield in percent (^TNX 4.57 = 4.57%); ThetaData quotes 10x
+# that. Both are scaled to a decimal below, by different divisors.
+YAHOO_YIELD_INDICES = {"^IRX": "13w", "^FVX": "5y", "^TNX": "10y", "^TYX": "30y"}
+
+# The option store starts here, so the curve must too.
+YIELD_HISTORY_START = date(2017, 1, 1)
+
+# SOFR, from ThetaData's own rate endpoint. Tier-capped at 2024 like the index
+# levels, so it does not reach the whole option history — but unlike
+# `fred_rates.parquet`, which it replaces, there is code in this repo that can
+# rebuild it. FRED is unreachable from here (the host resolves but refuses the
+# connection), which is presumably why that file never had a pipeline.
+RATES = ["SOFR"]
 
 # ThetaData rejects any history request spanning more than 365 days, and the
 # free tier refuses index history starting before roughly 2024-01-01 (earlier
@@ -83,7 +103,56 @@ def fetch_indices(symbols: list[str], start_date: date, end_date: date) -> pl.Da
     )
 
 
-def run(start_date: date, end_date: date, output_dir: str) -> None:
+def fetch_yields(start_date: date, end_date: date) -> pl.DataFrame:
+    """The treasury curve as a decimal yield, one row per (date, tenor)."""
+    frames = []
+    for ticker, tenor in YAHOO_YIELD_INDICES.items():
+        history = yf.Ticker(ticker).history(
+            start=start_date, end=end_date + timedelta(days=1), auto_adjust=False
+        )["Close"]
+        frames.append(
+            pl.DataFrame(
+                {
+                    "date": [stamp.date() for stamp in history.index],
+                    "tenor": tenor,
+                    "yield": history.values / 100,
+                }
+            )
+        )
+    return (
+        pl.concat(frames, how="vertical_relaxed")
+        .filter(pl.col("yield").is_not_nan() & pl.col("yield").is_not_null())
+        .unique(["date", "tenor"])
+        .sort("date", "tenor")
+    )
+
+
+def fetch_rates(start_date: date, end_date: date) -> pl.DataFrame:
+    client = make_client()
+    frames = []
+    for symbol in RATES:
+        for chunk_start, chunk_end in date_chunks(start_date, end_date):
+            rate_df = client.interest_rate_history_eod(symbol, chunk_start, chunk_end)
+            frames.append(
+                rate_df.select(
+                    pl.col("created").str.strptime(pl.Date, "%Y-%m-%d").alias("date"),
+                    pl.lit(symbol).alias("symbol"),
+                    (pl.col("rate") / 100).alias("rate"),
+                )
+            )
+    return (
+        pl.concat(frames, how="vertical_relaxed")
+        .unique(["date", "symbol"])
+        .sort("date", "symbol")
+    )
+
+
+def run(
+    start_date: date,
+    end_date: date,
+    output_dir: str,
+    yield_start: date = YIELD_HISTORY_START,
+) -> None:
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
@@ -91,19 +160,20 @@ def run(start_date: date, end_date: date, output_dir: str) -> None:
     index_df = fetch_indices(INDICES + VOL_INDICES, start_date, end_date)
     index_df.write_parquet(paths.INDICES)
 
-    # Yield indices carry a 10x scaling, so keep them as a separate curve table.
-    raw_yield_df = fetch_indices(list(YIELD_INDICES), start_date, end_date)
-    yield_df = raw_yield_df.select(
-        "date",
-        pl.col("symbol").replace_strict(YIELD_INDICES).alias("tenor"),
-        (pl.col("close") / 1000).alias("yield"),
-    ).sort("date", "tenor")
+    # The curve runs from `yield_start`, not `start_date`: index levels are
+    # capped at 2024 by the free tier but the yields are not, and every option
+    # year needs a discount rate.
+    yield_df = fetch_yields(yield_start, end_date)
     yield_df.write_parquet(paths.YIELDS)
+
+    rate_df = fetch_rates(start_date, end_date)
+    rate_df.write_parquet(paths.RATES)
 
     print(
         f"\ndone in {time.perf_counter() - started:.1f}s"
         f" | indices {index_df.height:,} rows ({index_df['symbol'].n_unique()} symbols)"
         f" | yields {yield_df.height:,} rows"
+        f" ({yield_df['date'].min()} .. {yield_df['date'].max()})"
         f" | rates {rate_df.height:,} rows"
     )
     return index_df, yield_df, rate_df
@@ -116,14 +186,20 @@ if __name__ == "__main__":
     )
     parser.add_argument("--end", type=date.fromisoformat, default=date(2025, 12, 31))
     parser.add_argument("--output-dir", default=str(paths.DATA_STORE))
+    parser.add_argument(
+        "--yield-start",
+        type=date.fromisoformat,
+        default=YIELD_HISTORY_START,
+        help="the curve reaches further back than the index levels the tier allows",
+    )
     args = parser.parse_args()
 
-    index_df, yield_df, rate_df = run(args.start, args.end, args.output_dir)
+    index_df, yield_df, rate_df = run(
+        args.start, args.end, args.output_dir, args.yield_start
+    )
 
     print("\nVIX term structure, most recent day:")
     latest = index_df.filter(pl.col("date") == index_df["date"].max())
     print(latest.filter(pl.col("symbol").is_in(VOL_INDICES)).select("symbol", "close"))
     print("\nyield curve, most recent day:")
     print(yield_df.filter(pl.col("date") == yield_df["date"].max()))
-    print("\nSOFR, most recent day:")
-    print(rate_df.tail(1))

@@ -8,7 +8,7 @@ path directly.
 
 from data_access_layer.loaders import (
     MissingDataset,
-    load_fred_rates,
+    load_rates,
     load_index_closes,
     load_indices,
     load_open_interest,
@@ -43,7 +43,7 @@ __all__ = [
     "MissingDataset",
     "available_option_symbols",
     "describe_store",
-    "load_fred_rates",
+    "load_rates",
     "load_index_closes",
     "load_indices",
     "load_open_interest",

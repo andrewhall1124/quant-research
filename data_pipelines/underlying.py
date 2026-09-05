@@ -57,6 +57,27 @@ if __name__ == "__main__":
     parser.add_argument("--output", default=str(paths.UNDERLYING))
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument(
+        "--history",
+        action="store_true",
+        help=(
+            "write underlying_history.parquet instead: the pre-sample stock"
+            " history, so a model burn-in does not consume formation dates in"
+            " the option window. Defaults to the whole span the free stock tier"
+            " serves before the main file starts, 2023-06-01 .. 2024-12-31."
+        ),
+    )
     args = parser.parse_args()
 
-    run(args.start, args.end, args.universe, args.output, args.workers, args.limit)
+    start_date, end_date, output_path = args.start, args.end, args.output
+    if args.history:
+        # The free stock tier refuses anything before 2023-06-01, so this is
+        # the whole of the available pre-sample, not an arbitrary window.
+        if start_date == date(2025, 1, 1):
+            start_date = date(2023, 6, 1)
+        if end_date == date(2025, 12, 31):
+            end_date = date(2024, 12, 31)
+        if output_path == str(paths.UNDERLYING):
+            output_path = str(paths.UNDERLYING_HISTORY)
+
+    run(start_date, end_date, args.universe, output_path, args.workers, args.limit)

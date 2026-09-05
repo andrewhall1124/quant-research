@@ -448,6 +448,314 @@ def load_yields(
     return in_window(only_symbols(frame, tenors, "tenor"), start, end).sort("date", "tenor").collect()
 
 
+def load_rates(start: date | None = None, end: date | None = None) -> pl.DataFrame:
+    """Overnight SOFR as a decimal rate. Tier-capped at 2024; see `load_yields`
+    for a curve that reaches the whole option history."""
+    frame = pl.scan_parquet(require(paths.RATES, "data_pipelines.reference"))
+    return in_window(frame, start, end).sort("date", "symbol").collect()
+
+
+def resolve_option_paths(
+    symbol: str,
+    dataset: str,
+    years: int | list[int] | None,
+    pipeline: str,
+    resolved_years: list | None = None,
+) -> list:
+    """The parquet files holding one symbol across the requested years.
+
+    `years` defaults to `paths.SAMPLE_YEAR` at every call site rather than to
+    "everything on disk", so landing a backfill year never silently changes
+    what a study that asked for no window already loads. Pass `years=None` to
+    opt in to the full history.
+    """
+    if resolved_years is None:
+        resolved_years = []
+    wanted = paths.available_years(dataset) if years is None else (
+        [years] if isinstance(years, int) else list(years)
+    )
+    found = [
+        path
+        for path in (
+            paths.option_dir(dataset, year) / f"{symbol.upper()}.parquet"
+            for year in sorted(set(wanted))
+        )
+        if path.exists()
+    ]
+    resolved_years[:] = [
+        year
+        for year in sorted(set(wanted))
+        if (paths.option_dir(dataset, year) / f"{symbol.upper()}.parquet").exists()
+    ]
+    if not found:
+        # Name the years actually asked for, since the usual cause is a year
+        # that was never backfilled rather than a symbol that does not exist.
+        raise MissingDataset(
+            f"no {dataset} on disk for {symbol.upper()} in"
+            f" {sorted(set(wanted)) or 'any year'}. Create it with:\n"
+            f"  uv run python -m {pipeline}"
+        )
+    return found
+
+
+def load_universe(
+    as_of: date | None = None, with_history: bool = False
+) -> pl.DataFrame:
+    """Point-in-time S&P 500 membership, one row per (date, ticker).
+
+    `with_history` prepends `universe_history.parquet`, the reconstruction for
+    the backfill years. It is a separate file because membership that far back
+    is walked further through Wikipedia's changes table and carries more
+    accumulated error than the 2025 sample.
+    """
+    frame = pl.scan_parquet(require(paths.UNIVERSE, "data_pipelines.universe"))
+    if with_history:
+        history_path = require(
+            paths.UNIVERSE_HISTORY, "data_pipelines.universe --history"
+        )
+        frame = pl.concat(
+            [pl.scan_parquet(history_path), frame], how="vertical_relaxed"
+        ).unique(["date", "ticker"])
+    if as_of is not None:
+        frame = frame.filter(pl.col("date") == as_of)
+    return frame.sort("date", "ticker").collect()
+
+
+def load_underlying(
+    symbols: str | list[str] | None = None,
+    start: date | None = None,
+    end: date | None = None,
+    drop_zero_prices: bool = True,
+    with_actions: bool = False,
+    in_universe: bool = False,
+    with_history: bool = False,
+) -> pl.DataFrame:
+    """EOD stock prices. The raw `created` timestamp becomes a plain `date`.
+
+    `drop_zero_prices` removes the final row ThetaData emits for a delisted
+    name, which carries open = high = low = close = 0 (sometimes with real
+    volume attached) rather than being absent. Left in, it books a -100% day.
+
+    `with_actions` adds `split_ratio` and `dividend` for that date from the
+    corporate-actions table, so returns can be adjusted at the point of use.
+
+    `with_history` prepends `underlying_history.parquet` (2023-06 to 2024-12)
+    and, when `in_universe` is also set, widens the membership table to match
+    so the extra years are not filtered straight back out. It
+    which exists so a volatility model can burn in *before* the option sample
+    starts instead of eating the first months of it. It is off by default so
+    that every study written against the 2025 panel keeps loading exactly what
+    it always did.
+
+    `in_universe` keeps only (symbol, date) pairs that were actually in the
+    index that day. Besides being what a universe-based study wants, it drops
+    the rows ThetaData returns for a symbol *before* its listing: SOLS has four
+    Jan-Apr 2025 rows priced at $0.0001, with volume, months before it began
+    trading on 2025-10-30.
+    """
+    sources = [require(paths.UNDERLYING, "data_pipelines.underlying")]
+    if with_history:
+        sources.insert(
+            0,
+            require(
+                paths.UNDERLYING_HISTORY,
+                "data_pipelines.underlying --start 2023-06-01 --end 2024-05-30"
+                " --output data_store/underlying_history.parquet",
+            ),
+        )
+    frame = (
+        pl.scan_parquet(sources)
+        .with_columns(pl.col("created").dt.date().alias("date"))
+        .select("date", "symbol", "open", "high", "low", "close", "volume", "bid", "ask")
+    )
+    if drop_zero_prices:
+        frame = frame.filter(pl.col("close") > 0)
+    if in_universe:
+        # universe.parquet is spelled in Wikipedia tickers; underlying.parquet
+        # in ThetaData's, so the membership table has to be mapped across.
+        #
+        # Membership follows the price window: asking for history and then
+        # semi-joining against 2025-only membership silently drops every
+        # pre-2025 row, which is a filter that looks like a data gap.
+        members = (
+            load_universe(with_history=with_history)
+            .with_columns(
+                pl.col("ticker").replace(THETA_STOCK_OVERRIDES).alias("symbol")
+            )
+            .select("date", "symbol")
+            .unique()
+        )
+        frame = frame.join(members.lazy(), on=["date", "symbol"], how="semi")
+    if with_actions:
+        actions_df = load_corporate_actions()
+        splits_df = (
+            actions_df.filter(pl.col("action") == "split")
+            .select("symbol", "date", pl.col("value").alias("split_ratio"))
+        )
+        dividends_df = (
+            actions_df.filter(pl.col("action") == "dividend")
+            .group_by("symbol", "date")
+            .agg(pl.col("value").sum().alias("dividend"))
+        )
+        frame = (
+            frame.join(splits_df.lazy(), on=["symbol", "date"], how="left")
+            .join(dividends_df.lazy(), on=["symbol", "date"], how="left")
+            .with_columns(
+                pl.col("split_ratio").fill_null(1.0),
+                pl.col("dividend").fill_null(0.0),
+            )
+        )
+    return in_window(only_symbols(frame, symbols), start, end).sort("date", "symbol").collect()
+
+
+def load_corporate_actions(
+    kind: str | None = None,
+    symbols: str | list[str] | None = None,
+    start: date | None = None,
+    end: date | None = None,
+) -> pl.DataFrame:
+    """Splits and dividends from Yahoo. `kind` is "split", "dividend" or None.
+
+    Split values are ex-date ratios (ORLY 2025-06-10 is 15.0). Yahoo also
+    encodes spinoff adjustment factors here as non-integer "splits" (DD 2.39 on
+    the Qnity spinoff), which is what you want for the same reason.
+    """
+    frame = pl.scan_parquet(
+        require(paths.CORPORATE_ACTIONS, "data_pipelines.corporate_actions")
+    )
+    if kind is not None:
+        frame = frame.filter(pl.col("action") == kind)
+    return in_window(only_symbols(frame, symbols), start, end).sort("symbol", "date").collect()
+
+
+def load_earnings(
+    symbols: str | list[str] | None = None,
+    start: date | None = None,
+    end: date | None = None,
+) -> pl.DataFrame:
+    """Earnings announcement dates, one row per (symbol, date).
+
+    `session` is "bmo", "amc" or "unknown". It matters: a before-the-open
+    report moves that day's close-to-close return, an after-the-close report
+    moves the *next* one.
+    """
+    frame = pl.scan_parquet(require(paths.EARNINGS, "data_pipelines.earnings"))
+    return in_window(only_symbols(frame, symbols), start, end).sort("symbol", "date").collect()
+
+
+def with_earnings_distance(prices_df: pl.DataFrame) -> pl.DataFrame:
+    """Add `days_to_earnings` and `days_since_earnings` to a (symbol, date) panel.
+
+    Both are calendar days, and `days_to_earnings` counts to the next
+    announcement on or after the row's date. An implied-vol signal ranked
+    cross-sectionally will sort largely on this column unless it is controlled
+    for, which is the whole reason the table exists.
+    """
+    events_df = load_earnings().select(
+        "symbol", pl.col("date").alias("earnings_date")
+    )
+    ordered = prices_df.sort("symbol", "date")
+    events = events_df.sort("symbol", "earnings_date")
+    forward = ordered.join_asof(
+        events, left_on="date", right_on="earnings_date", by="symbol",
+        strategy="forward", check_sortedness=False,
+    ).select("symbol", "date", pl.col("earnings_date").alias("next_earnings"))
+    backward = ordered.join_asof(
+        events, left_on="date", right_on="earnings_date", by="symbol",
+        strategy="backward", check_sortedness=False,
+    ).select("symbol", "date", pl.col("earnings_date").alias("previous_earnings"))
+    return (
+        prices_df.join(forward, on=["symbol", "date"], how="left")
+        .join(backward, on=["symbol", "date"], how="left")
+        .with_columns(
+            (pl.col("next_earnings") - pl.col("date")).dt.total_days().alias("days_to_earnings"),
+            (pl.col("date") - pl.col("previous_earnings")).dt.total_days().alias("days_since_earnings"),
+        )
+    )
+
+
+def load_symbology_check(
+    years: int | list[int] | None = None,
+    status: str | list[str] | None = None,
+) -> pl.DataFrame:
+    """Per-symbol, per-year verdict on whether an option root is the right company.
+
+    See `data_pipelines/symbology.py`. Statuses are:
+
+    * `ok` — the option store's `underlying_price` returns match Yahoo's for
+      that ticker, so it is the company the universe claims.
+    * `thin_overlap` — fewer than 20 days of Yahoo overlap, so the check could
+      not run. **Unverified, not wrong.** It falls disproportionately on names
+      that were later delisted or acquired, because Yahoo stops serving them,
+      which makes excluding it a survivorship filter rather than a quality one.
+    * `wrong_instrument` — returns do not correlate; a different company's
+      chain filed under this ticker. Genuinely unusable.
+    """
+    frame = pl.scan_parquet(require(paths.SYMBOLOGY_CHECK, "data_pipelines.symbology"))
+    if years is not None:
+        wanted = [years] if isinstance(years, int) else list(years)
+        frame = frame.filter(pl.col("year").is_in(wanted))
+    return only_symbols(frame, status, "status").sort("year", "symbol").collect()
+
+
+def usable_symbol_years(years: int | list[int] | None = None) -> pl.DataFrame:
+    """(symbol, year) pairs whose option data is not known to be the wrong company.
+
+    The survivorship-safe replacement for `trusted_symbols` on a multi-year
+    sample. `trusted_symbols` reads `ticker_check`, which was built against the
+    2025 universe, so applying it to earlier years silently drops the names that
+    did not survive to 2025 — 84 of 511 symbols in 2021, and the bias grows the
+    further back the sample reaches.
+
+    Only `wrong_instrument` is excluded here. `thin_overlap` is kept, because it
+    means the check could not run rather than that it failed, and the names it
+    covers are precisely the ones a survivorship filter would remove. The cost
+    of keeping them is that their split adjustments are unverified — Yahoo has
+    no history to check against — so a split in one of those names is not
+    caught. Splits are rare enough that this is the better trade, but it is a
+    trade.
+    """
+    checks_df = load_symbology_check(years)
+    return (
+        checks_df.filter(pl.col("status") != "wrong_instrument")
+        .select("symbol", "year")
+        .unique()
+    )
+
+
+def load_indices(
+    symbols: str | list[str] | None = None,
+    start: date | None = None,
+    end: date | None = None,
+) -> pl.DataFrame:
+    """EOD index levels: SPX, RUT, OEX, XSP and the VIX complex."""
+    frame = pl.scan_parquet(require(paths.INDICES, "data_pipelines.reference"))
+    return in_window(only_symbols(frame, symbols), start, end).sort("date", "symbol").collect()
+
+
+def load_index_closes(
+    symbols: list[str],
+    start: date | None = None,
+    end: date | None = None,
+) -> pl.DataFrame:
+    """Index closes pivoted wide — one column per symbol, one row per date.
+
+    This is the shape most time-series work wants (e.g. SPX beside VIX).
+    """
+    long_df = load_indices(symbols, start, end)
+    return long_df.pivot(on="symbol", index="date", values="close").sort("date")
+
+
+def load_yields(
+    tenors: str | list[str] | None = None,
+    start: date | None = None,
+    end: date | None = None,
+) -> pl.DataFrame:
+    """CBOE treasury yield indices (13w, 5y, 10y, 30y) as decimal yields."""
+    frame = pl.scan_parquet(require(paths.YIELDS, "data_pipelines.reference"))
+    return in_window(only_symbols(frame, tenors, "tenor"), start, end).sort("date", "tenor").collect()
+
+
 def load_fred_rates(
     series: str | list[str] | None = None,
     start: date | None = None,

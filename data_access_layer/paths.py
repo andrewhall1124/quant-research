@@ -20,7 +20,7 @@ UNDERLYING = DATA_STORE / "underlying_2025.parquet"
 UNDERLYING_HISTORY = DATA_STORE / "underlying_history.parquet"
 INDICES = DATA_STORE / "indices.parquet"
 YIELDS = DATA_STORE / "yields.parquet"
-FRED_RATES = DATA_STORE / "fred_rates.parquet"
+RATES = DATA_STORE / "rates.parquet"
 
 # Per-symbol-year verdict on whether a backfilled option root is the company
 # the universe says it is. See data_pipelines/symbology.py.
@@ -94,7 +94,7 @@ DATASETS = {
     "underlying_history": UNDERLYING_HISTORY,
     "indices": INDICES,
     "yields": YIELDS,
-    "fred_rates": FRED_RATES,
+    "rates": RATES,
     "corporate_actions": CORPORATE_ACTIONS,
     "symbology_check": SYMBOLOGY_CHECK,
     "earnings": EARNINGS,
