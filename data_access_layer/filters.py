@@ -1,9 +1,13 @@
-"""The filtering vocabulary every loader shares.
+"""The three things every loader does: check, window, deliver.
 
-`in_window` and `only_symbols` take and return LazyFrames, so a loader can
-compose them and let polars push the predicates down into the parquet scan —
-asking for one symbol out of a 1.5 GB chain directory reads only that symbol's
-row groups.
+A loader is a pure read. It resolves the files, filters to `[start, end]`, and
+hands back a LazyFrame when `lazy=True` or a collected DataFrame otherwise —
+nothing else. Screening, joining and deriving belong to the caller, or to the
+named transforms next to each loader.
+
+Keeping the filter lazy is what makes that cheap: polars pushes the date
+predicate into the parquet scan, so a one-month window over a year-stamped
+chain directory reads only the row groups it needs.
 """
 
 from datetime import date
@@ -21,18 +25,17 @@ def require(path, pipeline: str):
     return path
 
 
-def in_window(frame: pl.LazyFrame, start: date | None, end: date | None) -> pl.LazyFrame:
+def in_window(
+    frame: pl.LazyFrame, start: date | None, end: date | None, column: str = "date"
+) -> pl.LazyFrame:
+    """Filter to an inclusive date window. `None` on either side means open."""
     if start is not None:
-        frame = frame.filter(pl.col("date") >= start)
+        frame = frame.filter(pl.col(column) >= start)
     if end is not None:
-        frame = frame.filter(pl.col("date") <= end)
+        frame = frame.filter(pl.col(column) <= end)
     return frame
 
 
-def only_symbols(
-    frame: pl.LazyFrame, symbols: str | list[str] | None, column: str = "symbol"
-) -> pl.LazyFrame:
-    if symbols is None:
-        return frame
-    wanted = [symbols] if isinstance(symbols, str) else list(symbols)
-    return frame.filter(pl.col(column).is_in(wanted))
+def deliver(frame: pl.LazyFrame, lazy: bool) -> pl.LazyFrame | pl.DataFrame:
+    """Every loader's last line: stay lazy, or collect."""
+    return frame if lazy else frame.collect()

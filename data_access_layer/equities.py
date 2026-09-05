@@ -1,8 +1,9 @@
 """Stock prices and the corporate actions that make their returns comparable.
 
 The two live together because a return is only correct with both: a split
-falling between two closes is a -50% day in the raw prices, and `load_underlying
-(with_actions=True)` is how a study gets the ratio onto the row that needs it.
+falling between two closes is a -50% day in the raw prices, and
+`with_corporate_actions` is how a study gets the ratio onto the row that needs
+it.
 """
 
 from datetime import date
@@ -10,8 +11,7 @@ from datetime import date
 import polars as pl
 
 from data_access_layer import paths
-from data_access_layer.filters import in_window, only_symbols, require
-from data_access_layer.universe import load_universe
+from data_access_layer.filters import deliver, in_window, require
 
 # Mirrors data_pipelines.common.TICKER_OVERRIDES["stock"]. Duplicated rather
 # than imported so the access layer does not depend on the pipeline package.
@@ -19,109 +19,82 @@ THETA_STOCK_OVERRIDES = {"BNY": "BK"}
 
 
 def load_underlying(
-    symbols: str | list[str] | None = None,
-    start: date | None = None,
-    end: date | None = None,
-    drop_zero_prices: bool = True,
-    with_actions: bool = False,
-    in_universe: bool = False,
-    with_history: bool = False,
-) -> pl.DataFrame:
-    """EOD stock prices. The raw `created` timestamp becomes a plain `date`.
+    start: date | None = None, end: date | None = None, lazy: bool = False
+) -> pl.LazyFrame | pl.DataFrame:
+    """EOD stock prices, raw, with `created` also given as a plain `date`.
 
-    `drop_zero_prices` removes the final row ThetaData emits for a delisted
-    name, which carries open = high = low = close = 0 (sometimes with real
-    volume attached) rather than being absent. Left in, it books a -100% day.
+    Reads `underlying_history.parquet` (2023-06 to 2024-12) and
+    `underlying_2025.parquet` together; they do not overlap, so the window
+    alone decides what you get. 2023-06 is the stock tier's floor, which is why
+    the chain loaders — whose `underlying_price` rides on the row — reach the
+    whole option history and this one cannot.
 
-    `with_actions` adds `split_ratio` and `dividend` for that date from the
-    corporate-actions table, so returns can be adjusted at the point of use.
+    Two things in here will book a wrong return if you do not screen for them:
 
-    `with_history` prepends `underlying_history.parquet` (2023-06 to 2024-12)
-    and, when `in_universe` is also set, widens the membership table to match
-    so the extra years are not filtered straight back out. It
-    which exists so a volatility model can burn in *before* the option sample
-    starts instead of eating the first months of it. It is off by default so
-    that every study written against the 2025 panel keeps loading exactly what
-    it always did.
-
-    `in_universe` keeps only (symbol, date) pairs that were actually in the
-    index that day. Besides being what a universe-based study wants, it drops
-    the rows ThetaData returns for a symbol *before* its listing: SOLS has four
-    Jan-Apr 2025 rows priced at $0.0001, with volume, months before it began
-    trading on 2025-10-30.
+    * ThetaData emits a final row for a delisted name with
+      open = high = low = close = 0, sometimes with real volume attached, rather
+      than omitting it. Left in, it is a -100% day. Drop with
+      `filter(pl.col('close') > 0)`.
+    * Rows appear for a symbol before it was listed. `filter_to_universe`
+      removes them.
     """
-    sources = [require(paths.UNDERLYING, "data_pipelines.underlying")]
-    if with_history:
-        sources.insert(
-            0,
-            require(
-                paths.UNDERLYING_HISTORY,
-                "data_pipelines.underlying --start 2023-06-01 --end 2024-05-30"
-                " --output data_store/underlying_history.parquet",
-            ),
-        )
+    sources = [
+        require(
+            paths.UNDERLYING_HISTORY,
+            "data_pipelines.underlying --start 2023-06-01 --end 2024-05-30"
+            " --output data_store/underlying_history.parquet",
+        ),
+        require(paths.UNDERLYING, "data_pipelines.underlying"),
+    ]
     frame = (
         pl.scan_parquet(sources)
         .with_columns(pl.col("created").dt.date().alias("date"))
-        .select("date", "symbol", "open", "high", "low", "close", "volume", "bid", "ask")
+        .sort("date", "symbol")
     )
-    if drop_zero_prices:
-        frame = frame.filter(pl.col("close") > 0)
-    if in_universe:
-        # universe.parquet is spelled in Wikipedia tickers; underlying.parquet
-        # in ThetaData's, so the membership table has to be mapped across.
-        #
-        # Membership follows the price window: asking for history and then
-        # semi-joining against 2025-only membership silently drops every
-        # pre-2025 row, which is a filter that looks like a data gap.
-        members = (
-            load_universe(with_history=with_history)
-            .with_columns(
-                pl.col("ticker").replace(THETA_STOCK_OVERRIDES).alias("symbol")
-            )
-            .select("date", "symbol")
-            .unique()
-        )
-        frame = frame.join(members.lazy(), on=["date", "symbol"], how="semi")
-    if with_actions:
-        actions_df = load_corporate_actions()
-        splits_df = (
-            actions_df.filter(pl.col("action") == "split")
-            .select("symbol", "date", pl.col("value").alias("split_ratio"))
-        )
-        dividends_df = (
-            actions_df.filter(pl.col("action") == "dividend")
-            .group_by("symbol", "date")
-            .agg(pl.col("value").sum().alias("dividend"))
-        )
-        frame = (
-            frame.join(splits_df.lazy(), on=["symbol", "date"], how="left")
-            .join(dividends_df.lazy(), on=["symbol", "date"], how="left")
-            .with_columns(
-                pl.col("split_ratio").fill_null(1.0),
-                pl.col("dividend").fill_null(0.0),
-            )
-        )
-    return in_window(only_symbols(frame, symbols), start, end).sort("date", "symbol").collect()
+    return deliver(in_window(frame, start, end), lazy)
 
 
 def load_corporate_actions(
-    kind: str | None = None,
-    symbols: str | list[str] | None = None,
-    start: date | None = None,
-    end: date | None = None,
-) -> pl.DataFrame:
-    """Splits and dividends from Yahoo. `kind` is "split", "dividend" or None.
+    start: date | None = None, end: date | None = None, lazy: bool = False
+) -> pl.LazyFrame | pl.DataFrame:
+    """Splits and dividends from Yahoo, one row per (symbol, date, action).
 
-    Split values are ex-date ratios (ORLY 2025-06-10 is 15.0). Yahoo also
-    encodes spinoff adjustment factors here as non-integer "splits" (DD 2.39 on
-    the Qnity spinoff), which is what you want for the same reason.
+    `action` is "split" or "dividend". Split values are ex-date ratios (ORLY
+    2025-06-10 is 15.0). Yahoo also encodes spinoff adjustment factors here as
+    non-integer "splits" (DD 2.39 on the Qnity spinoff), which is what you want
+    for the same reason.
     """
     frame = pl.scan_parquet(
         require(paths.CORPORATE_ACTIONS, "data_pipelines.corporate_actions")
+    ).sort("symbol", "date")
+    return deliver(in_window(frame, start, end), lazy)
+
+
+def with_corporate_actions(prices):
+    """Add `split_ratio` and `dividend` for each row's date.
+
+    Null becomes 1.0 and 0.0 respectively, so the columns are safe to multiply
+    and add without a further fill. Pair with `split_adjusted_return`.
+
+    Takes and returns whichever of DataFrame or LazyFrame it was given.
+    """
+    lazy = isinstance(prices, pl.LazyFrame)
+    actions = load_corporate_actions(lazy=True)
+    splits = actions.filter(pl.col("action") == "split").select(
+        "symbol", "date", pl.col("value").alias("split_ratio")
     )
-    if kind is not None:
-        frame = frame.filter(pl.col("action") == kind)
-    return in_window(only_symbols(frame, symbols), start, end).sort("symbol", "date").collect()
-
-
+    dividends = (
+        actions.filter(pl.col("action") == "dividend")
+        .group_by("symbol", "date")
+        .agg(pl.col("value").sum().alias("dividend"))
+    )
+    joined = (
+        prices.lazy()
+        .join(splits, on=["symbol", "date"], how="left")
+        .join(dividends, on=["symbol", "date"], how="left")
+        .with_columns(
+            pl.col("split_ratio").fill_null(1.0),
+            pl.col("dividend").fill_null(0.0),
+        )
+    )
+    return joined if lazy else joined.collect()

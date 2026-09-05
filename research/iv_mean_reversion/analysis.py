@@ -2,6 +2,7 @@
 
 import argparse
 import json
+from datetime import date
 from pathlib import Path
 
 import matplotlib
@@ -21,10 +22,16 @@ OUTPUT = Path(__file__).resolve().parent
 
 def load_pairs(year):
     # No liquidity, IV, moneyness or volume filters on the marking universe.
+    # The loader is a pure read, so mid and dte are derived and the 0-40 DTE
+    # window applied here rather than passed down.
     chain_df = dal.load_option_greeks(
-        'SPXW', index=True, years=year, min_dte=0, max_dte=40,
-        columns=KEYS + ['right', 'dte', 'underlying_price'] + FIELDS,
-    )
+        'SPXW', date(year, 1, 1), date(year, 12, 31), index=True,
+    ).with_columns(
+        ((pl.col('bid') + pl.col('ask')) / 2).alias('mid'),
+        (pl.col('expiration') - pl.col('date')).dt.total_days().alias('dte'),
+    ).filter(
+        pl.col('dte').is_between(0, 40)
+    ).select(KEYS + ['right', 'dte', 'underlying_price'] + FIELDS)
     if chain_df.select(pl.struct(KEYS + ['right']).is_duplicated().sum()).item():
         raise ValueError(f'Duplicate contract/day keys in {year}')
     calls_df = chain_df.filter(pl.col('right') == 'CALL').drop('right').rename(
@@ -144,8 +151,8 @@ def main():
         print(f'Held-contract quote loading {year}', flush=True)
         marks.append(load_pairs(year).join(contracts_df, on=['expiration', 'strike'], how='semi'))
     quotes_df = pl.concat(marks)
-    calendar_df = dal.load_universe(with_history=True).select('date').unique().filter(
-        pl.col('date').is_between(signals_df['date'].min(), signals_df['date'].max()))
+    calendar_df = dal.load_universe(
+        signals_df['date'].min(), signals_df['date'].max()).select('date').unique()
     audit = dict(sessions=signals_df.height,
                  missing_signal_days=signals_df['iv'].null_count(),
                  valid_zscores=signals_df['zscore'].drop_nulls().len(),

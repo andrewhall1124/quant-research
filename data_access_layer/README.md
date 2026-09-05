@@ -4,10 +4,11 @@ Every dataset in `data_store/`, behind one import. Pipelines write, this layer
 reads; research code should never open a parquet path itself.
 
 ```python
+from datetime import date
 import data_access_layer as dal
 
-prices_df = dal.load_underlying(in_universe=True, with_actions=True)
-chain_df = dal.load_option_greeks('AAPL', min_dte=20, max_dte=40, max_iv_error=1.0)
+chain_df = dal.load_option_greeks('AAPL', date(2025, 1, 1), date(2025, 3, 31))
+prices_df = dal.load_underlying(date(2025, 1, 1), date(2025, 12, 31))
 ```
 
 Import names from the package, not from a submodule. The file split is an
@@ -19,23 +20,41 @@ Start by seeing what is actually on disk:
 uv run python -c "import data_access_layer as dal; print(dal.describe_store())"
 ```
 
-## The shape everything comes back in
+## One signature, and nothing else
 
-Every loader returns an **eager polars DataFrame** with a `date` column of dtype
-`Date`, whatever the raw file carries, sorted. Filtering happens lazily inside,
-so asking for one symbol out of a 1.5 GB chain directory reads only that
-symbol's row groups — `load_option_greeks('AAPL')` is ~0.06s, not a full scan.
+```python
+load_x(start=None, end=None, lazy=False)
+```
 
-The same three arguments mean the same thing everywhere: `symbols` takes a
-string or a list, `start` and `end` are inclusive `date` bounds, and `None`
-means no filter.
+A loader scans, filters to the inclusive `[start, end]` window, and returns a
+LazyFrame when `lazy=True` or a collected DataFrame otherwise. `None` on either
+side means open. That is the whole contract — **no screening, no joins, no
+derived columns** beyond the `date` the window itself needs.
+
+The two per-symbol option loaders take the symbol first, since it selects the
+file rather than filtering rows:
+
+```python
+load_option_greeks(symbol, start=None, end=None, index=False, lazy=False)
+load_open_interest(symbol, start=None, end=None, lazy=False)
+```
+
+Staying lazy is what makes a window cheap: polars pushes the date predicate into
+the parquet scan, so `load_option_greeks('AAPL', date(2025, 1, 1), date(2025, 3,
+31))` is ~0.04s against 141k rows, where the full nine-year history is 0.46s and
+4.4M. Compose with `lazy=True` and collect once at the end.
+
+```python
+chain = dal.load_option_greeks('AAPL', start, end, lazy=True)
+liquid_df = chain.filter(pl.col('bid') > 0).group_by('date').len().collect()
+```
 
 ## What is loadable
 
 | Call | Covers | Grain |
 | --- | --- | --- |
-| `load_universe()` | 2025 | `date`, `ticker` — point-in-time S&P 500 membership |
-| `load_underlying()` | 2025 | `date`, `symbol` — EOD OHLCV plus closing bid/ask |
+| `load_universe()` | 2017–2025 | `date`, `ticker` — point-in-time S&P 500 membership |
+| `load_underlying()` | 2023-06–2025 | `date`, `symbol` — EOD OHLCV plus closing bid/ask |
 | `load_option_greeks(symbol)` | 2017–2025 | one symbol's EOD chain: greeks, IV, `underlying_price` |
 | `load_open_interest(symbol)` | 2017–2025 | one symbol's EOD open interest |
 | `load_indices()` | 2024–2025 | SPX, RUT, OEX, XSP and the VIX complex (`VIX1D`…`VIX1Y`, `VVIX`, `SKEW`) |
@@ -45,109 +64,120 @@ means no filter.
 | `load_corporate_actions()` | 2017–2026 | splits and dividends, ex-date |
 | `load_symbology_check()` | 2017–2025 | per-symbol-year verdict on whether the chain is the right company |
 
+`load_universe` and `load_underlying` each read their current and historical
+files together — the pair does not overlap, so the window alone decides what you
+get and there is no history flag to remember. 2023-06 is the stock tier's floor,
+which is why the chain loaders reach the full option history and the stock
+loader cannot: `underlying_price` rides on every chain row.
+
+`load_symbology_check` is the one loader with no window, because it is keyed on
+(year, symbol) rather than date. It is 4,613 rows; filter it yourself.
+
 519 symbols have 2025 chains; index roots (`SPX`, `SPXW`, `VIX`, `XSP`) live in
 their own directory behind `index=True`. `available_option_symbols(year=...)`
-and `available_years(dataset)` list what is there.
+and `available_years(dataset)` list what is there. The option loaders derive
+which year directories to open from the window, so an open-ended call reads
+everything on disk and a one-quarter call opens one directory.
 
-Two loaders reach further back than their default with a flag, because the
-extra years are reconstructed differently and are opt-in rather than free:
-`load_universe(with_history=True)` goes to 2017, and
-`load_underlying(with_history=True)` to 2023-06 (the stock tier's floor —
-which is why the chain loaders, whose `underlying_price` rides on the row,
-reach the full option history and the stock loader cannot).
+## Transforms: what used to be a loader flag
 
-## The five things you will actually do
+The joins that a loader used to do behind a boolean are now named functions you
+apply yourself. Each takes and returns **whichever of DataFrame or LazyFrame you
+hand it**, so they compose either way.
 
-**A panel of stock returns, split-adjusted, universe-filtered.**
-`in_universe=True` also drops the pre-listing rows ThetaData serves for a
-not-yet-trading symbol at $0.0001.
+| Transform | Adds |
+| --- | --- |
+| `filter_to_universe(prices)` | semi-join to index membership, mapping Wikipedia tickers to ThetaData's |
+| `with_corporate_actions(prices)` | `split_ratio` (null → 1.0) and `dividend` (null → 0.0) |
+| `with_earnings_distance(prices)` | `days_to_earnings`, `days_since_earnings`, calendar days |
+
+And two expressions in [transforms.py](transforms.py), so every study computes
+these the same way: `split_adjusted_return()` and `realized_volatility(col,
+window)`.
+
+A universe panel with split-adjusted returns and 20-day realized vol:
 
 ```python
-prices_df = dal.load_underlying(in_universe=True, with_actions=True)
-prices_df = prices_df.with_columns(
+prices_df = dal.load_underlying(date(2025, 1, 1), date(2025, 12, 31))
+panel_df = dal.with_corporate_actions(
+    dal.filter_to_universe(prices_df).filter(pl.col('close') > 0)
+).sort('symbol', 'date').with_columns(
     dal.split_adjusted_return().over('symbol'),
     dal.realized_volatility('close', 20).over('symbol').alias('rv_20'),
 )
 ```
 
-**A clean option chain.** `max_iv_error` is not optional in practice: about 3%
-of contract-days fail to invert and come back pinned near 0.5 with an error of
-±100. `quoted_only` drops contracts with no quote, which is also where
-`implied_vol` returns 0.0 rather than null.
+A clean 20–40 DTE call chain:
 
 ```python
-chain_df = dal.load_option_greeks(
-    'AAPL', min_dte=20, max_dte=40, max_moneyness=0.1,
-    max_iv_error=1.0, quoted_only=True, rights='CALL',
+chain_df = dal.load_option_greeks('AAPL', date(2025, 1, 1), date(2025, 3, 31)).with_columns(
+    ((pl.col('bid') + pl.col('ask')) / 2).alias('mid'),
+    (pl.col('expiration') - pl.col('date')).dt.total_days().alias('dte'),
+    (pl.col('strike') / pl.col('underlying_price') - 1).alias('moneyness'),
+).filter(
+    pl.col('right') == 'CALL',
+    pl.col('dte').is_between(20, 40),
+    pl.col('moneyness').abs() <= 0.1,
+    pl.col('iv_error').abs() <= 1.0,
+    pl.col('bid') > 0,
 )
-```
-
-`moneyness` (`strike / underlying_price - 1`), `dte`, `mid` and `date` are
-derived for you. The session stamp is `underlying_timestamp`, not `timestamp` —
-the former is the spot print the greeks were struck against, defined even for a
-contract that never traded.
-
-**The full option history for one name.** The `years` default is the 2025
-sample, not everything on disk, so landing a backfill year never silently
-changes what an existing study loads:
-
-```python
-chain_df = dal.load_option_greeks('AAPL', years=None)        # 2017–2025
-chain_df = dal.load_option_greeks('AAPL', years=[2023, 2024])
-```
-
-**Separating a vol signal from an earnings signal.** A cross-sectionally ranked
-IV signal will sort largely on days-to-earnings unless it is controlled for:
-
-```python
-panel_df = dal.with_earnings_distance(prices_df)  # + days_to_earnings, days_since_earnings
-```
-
-**Screening a multi-year sample.** `usable_symbol_years()` is the
-survivorship-safe filter: it excludes only `wrong_instrument`, keeping
-`thin_overlap` (the check *could not run*, which falls disproportionately on
-names that were later delisted — excluding them is a survivorship filter, not a
-quality one).
-
-```python
-pairs_df = dal.usable_symbol_years([2023, 2024, 2025])
 ```
 
 ## Gotchas worth knowing before you trust a number
 
-**A condemned symbol-year raises, it does not silently drop.** Asking for META
-in 2021 and getting a $15 stock is a wrong answer; asking and getting an empty
-frame without being told is a different wrong answer.
+Because the loaders no longer screen anything, these are now yours to apply.
+
+**Delisted names carry a zero row.** ThetaData emits a final row with
+open = high = low = close = 0, sometimes with real volume attached, rather than
+omitting it. Left in, it books a -100% day. `filter(pl.col('close') > 0)`.
+
+**Rows exist before a symbol was listed.** SOLS has four Jan–Apr 2025 rows priced
+at $0.0001, with volume, months before it began trading on 2025-10-30.
+`filter_to_universe` removes them.
+
+**`implied_vol` is only as good as `iv_error`.** About 3% of contract-days fail
+to invert and come back pinned near 0.5 with an error of ±100. Screen on
+`pl.col('iv_error').abs() <= 1.0` or tighter. Separately, contracts with no quote
+are present, and that is also where `implied_vol` is 0.0 rather than null.
+
+**The chain's session stamp is `underlying_timestamp`, not `timestamp`.** That is
+what `date` is derived from: the stamp on the spot print the greeks were struck
+against, defined even for a contract that never traded. `timestamp` is the
+contract's own last trade.
+
+**Open interest is settled and one day stale.** Stamped pre-open (~06:30 ET), it
+reports the position standing after the *previous* close — which is what a trader
+forming at today's close actually knows. So `date` joins straight onto a chain
+row for the same session with no shift.
+
+**Nothing checks that a symbol is the company the universe names.** Ask for META
+in 2021 and you get a $15 stock, silently. Screen a multi-year sample:
 
 ```python
-dal.load_option_greeks('COR', years=2017)
-# UntrustedSymbolYear: COR is not the company the universe names in [2017]
-dal.load_option_greeks('COR', years=2017, trusted_only=False)  # raw record, on purpose
+panel_df.join(dal.usable_symbol_years(), on=['symbol', 'year'], how='semi')
 ```
 
-Of 4,613 symbol-years checked, 18 are `wrong_instrument` and 2 `suspect`.
-`untrusted_symbol_years()` returns the refused set; `TRUSTED_OVERRIDES` in
-[quality.py](quality.py) is where a verdict is overturned by hand, for the cases
-where the *reference* is wrong rather than the data (2017 COL is genuinely
+`usable_symbol_years()` excludes only `wrong_instrument` (18 of 4,613
+symbol-years). It deliberately keeps `thin_overlap`, which means the check *could
+not run* — that status falls disproportionately on names later delisted or
+acquired, so excluding it is a survivorship filter, not a quality one. The cost
+is that those names' split adjustments are unverified. `untrusted_symbol_years()`
+returns the stricter set as a plain `{(year, symbol)}`, and `TRUSTED_OVERRIDES`
+in [quality.py](quality.py) is where a verdict is overturned by hand for the
+cases where the *reference* is wrong rather than the data (2017 COL is genuinely
 Rockwell Collins; Yahoo's modern COL is an unrelated shell).
 
-**Open interest is settled and one day stale.** It is stamped pre-open (~06:30
-ET) and reports the position standing after the *previous* close — which is what
-a trader forming at today's close actually knows. So `date` joins straight onto
-a chain row for the same session with no shift.
-
-**`corporate_action_symbol_years()` is a separate warning from the symbology
-check.** Those symbol-years hold a day the vendors disagree about by more than
-5% — usually an unadjusted spinoff. The symbol is right; the return on that one
-day is not.
+**`corporate_action_symbol_years()` is a separate warning.** Those 60
+symbol-years hold a day the vendors disagree about by more than 5% — usually an
+unadjusted spinoff. The symbol is right; the return on that one day is not.
 
 **A missing verdict does not empty your study.** `untrusted_symbol_years()`
 returns an empty set when `symbology_check.parquet` has never been built, on
 purpose. Run `data_pipelines.symbology` rather than trusting the silence.
 
 **A missing dataset tells you how to build it.** Every loader raises
-`MissingDataset` carrying the exact pipeline command, so you never have to go
-find out which script writes which file.
+`MissingDataset` carrying the exact pipeline command, and the option loaders also
+name the years the store does hold.
 
 ## The modules
 
@@ -157,25 +187,23 @@ Dependencies run one way down this list; there are no cycles.
 | --- | --- |
 | [paths.py](paths.py) | where each dataset lives, which years are on disk. The only place a `data_store/` path is spelled |
 | [errors.py](errors.py) | `MissingDataset`, `UntrustedSymbolYear` |
-| [filters.py](filters.py) | `require`, `in_window`, `only_symbols` — the shared filtering vocabulary |
-| [quality.py](quality.py) | the symbology verdict, and the guard the option loaders call |
-| [universe.py](universe.py) | point-in-time index membership |
-| [equities.py](equities.py) | stock prices and corporate actions |
-| [events.py](events.py) | earnings dates and distance to them |
+| [filters.py](filters.py) | `require`, `in_window`, `deliver` — the three things every loader does |
+| [quality.py](quality.py) | the symbology verdict and the screens built on it |
+| [equities.py](equities.py) | stock prices, corporate actions, `with_corporate_actions` |
+| [universe.py](universe.py) | index membership, `filter_to_universe` |
+| [events.py](events.py) | earnings dates, `with_earnings_distance` |
 | [reference.py](reference.py) | index levels, yields, rates |
-| [options.py](options.py) | per-symbol chains and open interest |
-| [transforms.py](transforms.py) | split-adjusted return and realized vol, computed one agreed way |
+| [options.py](options.py) | per-symbol chains, open interest, `spot_series` |
+| [transforms.py](transforms.py) | split-adjusted return and realized vol as expressions |
 
 ## Adding a loader
 
 1. Add the path to [paths.py](paths.py) and to the `DATASETS` map, so
    `describe_store()` reports it.
-2. Put the loader in the module that matches what it reads, and give it the
-   `symbols` / `start` / `end` signature by composing `only_symbols` and
-   `in_window` over a `pl.LazyFrame`. Wrap the path in `require(path, pipeline)`
-   so a missing file names the command that builds it.
-3. Export it from `__init__.py` and add it to `__all__`.
-
-Per-symbol datasets that grow a directory per year go through
-`resolve_option_paths`, which defaults `years` to `paths.SAMPLE_YEAR` — keep
-that default, and let a caller pass `years=None` to opt into the full history.
+2. Put the loader in the module matching what it reads, and give it the
+   `(start=None, end=None, lazy=False)` signature — `pl.scan_parquet` over a
+   `require(path, pipeline)`, then `in_window`, then `deliver`. Resist adding a
+   filter argument; a caller with `lazy=True` gets the same pushdown for free.
+3. If it needs a non-trivial join, write it as a separate `with_*` or `filter_*`
+   transform that takes and returns either frame type, rather than a loader flag.
+4. Export it from `__init__.py` and add it to `__all__`.
