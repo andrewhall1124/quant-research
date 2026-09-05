@@ -81,6 +81,16 @@ findings index at the bottom.
   `split_adjusted_return()`, never a bare `close.diff()`. The split session
   itself can still be corrupt: NVDA's 2024-06-10 high is 195.95 against a real
   range near 117-123.
+- **2020-05-01 is a corrupt session for 15 names, and it fails the whole
+  window.** ThetaData answers any open-interest request spanning that date for
+  CMI, CNC, COF, COP, COST, COTY, CPB, CRM, CSX, CTSH, CTXS, CVS, CVX, CXO or
+  DAL with `INTERNAL: java.lang.ArrayIndexOutOfBoundsException`. Asking for the
+  year therefore lost the year: 15 symbols had no 2020 open interest at all
+  until `open_interest.fetch_window` learned to bisect around a server fault.
+  It cannot be repaired — a single-day request for those names fails too — so
+  2020-05-01 carries 491 of 511 names rather than the full cross-section. Any
+  cross-sectional statistic on that one date is thin, and the missing names are
+  a contiguous alphabetical block rather than a random sample.
 - **Spinoffs are an unhandled corporate action, and they look exactly like an
   unadjusted split.** `corporate_actions.py` pulls splits and dividends only,
   so the raw series keeps the whole price drop on the ex-date while Yahoo

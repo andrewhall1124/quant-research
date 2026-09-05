@@ -14,7 +14,7 @@ them means re-deriving each one by hand.
 | File | Pipeline | Loader | Rows | Coverage |
 |---|---|---|---|---|
 | `universe.parquet` | `universe` | `load_universe` | 126,002 | 2025-01-02 → 2025-12-31 |
-| `universe_history.parquet` | `universe --history` | `load_universe(with_history=True)` | 1,144,573 | 2016-01-04 → 2024-12-31 |
+| `universe_history.parquet` | `universe --history` | `load_universe(with_history=True)` | 1,016,878 | 2017-01-03 → 2024-12-31 |
 | `underlying_2025.parquet` | `underlying` | `load_underlying` | 128,542 | 2025-01-02 → 2025-12-31 |
 | `underlying_history.parquet` | `underlying --start 2023-06-01` | `load_underlying(with_history=True)` | 203,496 | 2023-06-01 → 2024-12-31 |
 | `option_greeks/<SYM>.parquet` | `option_greeks` | `load_option_greeks` | 114,365,634 | 2025, 519 files, 8.5 GB |
@@ -30,10 +30,8 @@ them means re-deriving each one by hand.
 | `index_greeks_2025/<ROOT>.parquet` | `option_greeks --symbols` | `load_option_greeks(index=True)` | 9,768,195 | 2025, 4 files, 0.79 GB |
 | `indices.parquet` | `reference` | `load_indices`, `load_index_closes` | 5,531 | 2024-01-02 → 2025-12-31 |
 | `yields.parquet` | `reference` | `load_yields` | 2,000 | 2024-01-02 → 2025-12-31 |
-| `rates.parquet` | `reference` | `load_rates` | 731 | 2024-01-01 → 2025-12-31 |
 | `fred_rates.parquet` | `reference` | `load_fred_rates` | 2,430 | 2024-12-02 → 2025-12-31 |
 | `corporate_actions.parquet` | `corporate_actions` | `load_corporate_actions` | 16,584 | 2016-01-04 → present |
-| `ticker_check.parquet` | `corporate_actions` | `load_ticker_check`, `trusted_symbols` | 523 | one row per universe ticker |
 | `symbology_check.parquet` | `symbology --years …` | read directly | — | one row per symbol-year pulled |
 | `earnings.parquet` | `earnings` | `load_earnings`, `with_earnings_distance` | 45,060 | 1999-08-02 → 2026-12-09 |
 
