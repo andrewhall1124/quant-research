@@ -1,0 +1,37 @@
+open_interest 2017    508 files    0.08 GB
+open_interest 2018    507 files    0.11 GB
+open_interest 2019    511 files    0.14 GB
+open_interest 2020    511 files    0.18 GB
+open_interest 2021    515 files    0.19 GB
+open_interest 2022    515 files    0.37 GB
+open_interest 2023    513 files    0.38 GB
+open_interest 2024    516 files    0.41 GB
+open_interest 2025    519 files    0.44 GB
+option_greeks 2017    508 files    4.71 GB
+option_greeks 2018    506 files    5.23 GB
+option_greeks 2019    511 files    5.29 GB
+option_greeks 2020    511 files    6.65 GB
+option_greeks 2021    515 files    6.93 GB
+option_greeks 2022    514 files    6.87 GB
+option_greeks 2023    513 files    7.05 GB
+option_greeks 2024    516 files    8.25 GB
+option_greeks 2025    519 files    9.14 GB
+index_greeks 2017       4 files    0.24 GB
+index_greeks 2018       4 files    0.35 GB
+index_greeks 2019       4 files    0.38 GB
+index_greeks 2020       4 files    0.45 GB
+index_greeks 2021       4 files    0.31 GB
+index_greeks 2022       4 files    0.61 GB
+index_greeks 2023       4 files    0.63 GB
+index_greeks 2024       4 files    0.72 GB
+index_greeks 2025       4 files    0.79 GB
+universe           1 file      0.0 MB
+universe_history    1 file      0.1 MB
+underlying         1 file      3.8 MB
+underlying_history    1 file      6.1 MB
+indices            1 file      0.1 MB
+yields             1 file      0.0 MB
+rates              1 file      0.0 MB
+corporate_actions    1 file      0.0 MB
+symbology_check    1 file      0.0 MB
+earnings           1 file      0.5 MB
