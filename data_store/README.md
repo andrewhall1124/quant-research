@@ -16,22 +16,30 @@ them means re-deriving each one by hand.
 | `universe.parquet` | `universe` | `load_universe` | 126,002 | 2025-01-02 → 2025-12-31 |
 | `universe_history.parquet` | `universe --history` | `load_universe(with_history=True)` | 1,016,878 | 2017-01-03 → 2024-12-31 |
 | `underlying_2025.parquet` | `underlying` | `load_underlying` | 128,542 | 2025-01-02 → 2025-12-31 |
-| `underlying_history.parquet` | `underlying --start 2023-06-01` | `load_underlying(with_history=True)` | 203,496 | 2023-06-01 → 2024-12-31 |
-| `option_greeks/<SYM>.parquet` | `option_greeks` | `load_option_greeks` | 114,365,634 | 2025, 519 files, 8.5 GB |
+| `underlying_history.parquet` | `underlying --history` | `load_underlying(with_history=True)` | 203,496 | 2023-06-01 → 2024-12-31 |
+| `option_greeks/<SYM>.parquet` | `option_greeks` | `load_option_greeks` | 114,365,634 | 2025, 519 files, 9.14 GB |
 | `option_greeks_2024/<SYM>.parquet` | `option_greeks --year 2024` | `load_option_greeks(years=2024)` | 104,511,492 | 2024, 516 files, 8.25 GB |
-| `option_greeks_2023/<SYM>.parquet` | `option_greeks --year 2023` | `load_option_greeks(years=2023)` | 88,135,029 | 2023, 512 files, 7.05 GB |
-| `option_greeks_2022/<SYM>.parquet` | `option_greeks --year 2022` | `load_option_greeks(years=2022)` | 85,061,633 | 2022, 513 files, 6.87 GB |
-| `option_greeks_2021/<SYM>.parquet` | `option_greeks --year 2021` | `load_option_greeks(years=2021)` | 85,799,666 | 2021, 511 files, 6.92 GB |
-| `open_interest/<SYM>.parquet` | `open_interest` | `load_open_interest` | 113,008,800 | 2025, 519 files, 438 MB |
+| `option_greeks_2023/<SYM>.parquet` | `option_greeks --year 2023` | `load_option_greeks(years=2023)` | 88,156,305 | 2023, 513 files, 7.05 GB |
+| `option_greeks_2022/<SYM>.parquet` | `option_greeks --year 2022` | `load_option_greeks(years=2022)` | 85,085,265 | 2022, 514 files, 6.87 GB |
+| `option_greeks_2021/<SYM>.parquet` | `option_greeks --year 2021` | `load_option_greeks(years=2021)` | 85,896,876 | 2021, 515 files, 6.93 GB |
+| `option_greeks_2020/<SYM>.parquet` | `option_greeks --year 2020` | `load_option_greeks(years=2020)` | 82,234,721 | 2020, 511 files, 6.65 GB |
+| `option_greeks_2019/<SYM>.parquet` | `option_greeks --year 2019` | `load_option_greeks(years=2019)` | 66,155,822 | 2019, 511 files, 5.29 GB |
+| `option_greeks_2018/<SYM>.parquet` | `option_greeks --year 2018` | `load_option_greeks(years=2018)` | 65,415,900 | 2018, 506 files, 5.23 GB |
+| `option_greeks_2017/<SYM>.parquet` | `option_greeks --year 2017` | `load_option_greeks(years=2017)` | 59,904,565 | 2017, 508 files, 4.71 GB |
+| `open_interest/<SYM>.parquet` | `open_interest` | `load_open_interest` | 113,008,800 | 2025, 519 files, 0.44 GB |
 | `open_interest_2024/<SYM>.parquet` | `open_interest --year 2024` | `load_open_interest(years=2024)` | 104,498,601 | 2024, 516 files, 0.41 GB |
-| `open_interest_2023/<SYM>.parquet` | `open_interest --year 2023` | `load_open_interest(years=2023)` | 88,123,911 | 2023, 512 files, 0.38 GB |
-| `open_interest_2022/<SYM>.parquet` | `open_interest --year 2022` | `load_open_interest(years=2022)` | 86,547,057 | 2022, 514 files, 0.37 GB |
-| `open_interest_2021/<SYM>.parquet` | `open_interest --year 2021` | `load_open_interest(years=2021)` | 87,736,964 | 2021, 511 files, 0.19 GB |
-| `index_greeks_2025/<ROOT>.parquet` | `option_greeks --symbols` | `load_option_greeks(index=True)` | 9,768,195 | 2025, 4 files, 0.79 GB |
+| `open_interest_2023/<SYM>.parquet` | `open_interest --year 2023` | `load_open_interest(years=2023)` | 88,145,199 | 2023, 513 files, 0.38 GB |
+| `open_interest_2022/<SYM>.parquet` | `open_interest --year 2022` | `load_open_interest(years=2022)` | 86,570,921 | 2022, 515 files, 0.37 GB |
+| `open_interest_2021/<SYM>.parquet` | `open_interest --year 2021` | `load_open_interest(years=2021)` | 87,835,801 | 2021, 515 files, 0.19 GB |
+| `open_interest_2020/<SYM>.parquet` | `open_interest --year 2020` | `load_open_interest(years=2020)` | 83,817,541 | 2020, 511 files, 0.18 GB |
+| `open_interest_2019/<SYM>.parquet` | `open_interest --year 2019` | `load_open_interest(years=2019)` | 67,827,294 | 2019, 511 files, 0.14 GB |
+| `open_interest_2018/<SYM>.parquet` | `open_interest --year 2018` | `load_open_interest(years=2018)` | 40,669,064 | 2018, 507 files, 0.11 GB |
+| `open_interest_2017/<SYM>.parquet` | `open_interest --year 2017` | `load_open_interest(years=2017)` | 31,583,451 | 2017, 508 files, 0.08 GB |
+| `index_greeks_<YYYY>/<ROOT>.parquet` | `option_greeks --symbols … --output-dir …` | `load_option_greeks(index=True, years=…)` | 61,007,311 | 2017-2025, 36 files, 4.49 GB |
 | `indices.parquet` | `reference` | `load_indices`, `load_index_closes` | 5,531 | 2024-01-02 → 2025-12-31 |
 | `yields.parquet` | `reference` | `load_yields` | 9,048 | 2017-01-03 → 2025-12-31 |
 | `rates.parquet` | `reference` | `load_rates` | 731 | 2024-01-01 → 2025-12-31 |
-| `corporate_actions.parquet` | `corporate_actions` | `load_corporate_actions` | 16,584 | 2016-01-04 → present |
+| `corporate_actions.parquet` | `corporate_actions --start 2017-01-01` | `load_corporate_actions` | 15,144 | 2017-01-03 → present |
 | `symbology_check.parquet` | `symbology --years …` | read directly | — | one row per symbol-year pulled |
 | `earnings.parquet` | `earnings` | `load_earnings`, `with_earnings_distance` | 45,060 | 1999-08-02 → 2026-12-09 |
 
@@ -105,7 +113,7 @@ Read these once; they explain most of the per-dataset notes.
 
 ---
 
-## The 2021-2024 backfill
+## The 2017-2024 backfill
 
 363.5 M contract-days added over five pulls, ~29 GB, with **zero failed
 requests** in roughly 520,000. Each year took ~2 hours for greeks and ~1.5
@@ -151,8 +159,17 @@ One row per (date, ticker) for every day a name was in the index.
 523 distinct tickers over 2025; 504 on almost every day (505 on one). Built by walking
 Wikipedia's current constituent list backwards through the changes table, so
 membership is genuinely point-in-time rather than today's list projected
-backwards. The trading calendar comes from SPY's EOD history, because
-ThetaData's calendar endpoint needs a paid tier.
+backwards.
+
+The trading calendar is weekdays minus ThetaData's `calendar_year` full
+closures — free at every tier and reaching 2016, unlike SPY's EOD history it
+used to read, which the free stock tier refuses before 2023-06-01 and which
+therefore could not have produced a session list for any backfill year. The two
+agree on all 250 sessions of 2025, the 2025-01-09 day of mourning included.
+Early closes are trading days and are kept.
+
+**Rebuilt from today's Wikipedia list every run**, so membership shifts as
+constituents change. The option data is fixed; this table is not.
 
 **Gotchas**
 
@@ -248,7 +265,7 @@ last bit — 250 days for AAPL, KO and NEM, 247 for SPXW.
   workers with zero `RESOURCE_EXHAUSTED` retries. Earlier years are smaller:
   AAPL's 2017 chain is 0.55x the size of its 2025 one, 2022 is 0.81x.
 
-## `index_greeks_2025/<ROOT>.parquet` — EOD index chains
+## `index_greeks_<YYYY>/<ROOT>.parquet` — EOD index chains
 
 Same schema as the single-name chains, pulled by the same pipeline with
 `--symbols SPX,SPXW,XSP,VIX --output-dir data_store/index_greeks_2025`. They
@@ -303,7 +320,7 @@ VIX1D, VIX9D, VIX, VIX3M, VIX1Y, VVIX, SKEW.
 - Coverage starts 2024-01-02 because that is the free tier's index history
   floor; 2023 is refused as VALUE, 2022 as STANDARD, 2020 as PROFESSIONAL.
 
-## `yields.parquet` — CBOE treasury yield indices
+## `yields.parquet` — the treasury curve
 
 | Column | Type | Notes |
 |---|---|---|
@@ -311,17 +328,35 @@ VIX1D, VIX9D, VIX, VIX3M, VIX1Y, VVIX, SKEW.
 | `tenor` | String | `13w`, `5y`, `10y`, `30y` |
 | `yield` | Float64 | **decimal** — 0.0430 is 4.30% |
 
-**Gotcha.** The raw indices are quoted at 10x the yield in percent (TNX 43.0 =
-4.30%), so `reference.py` divides by 1000 on the way in. The stored value is
-already a decimal; do not scale it again.
+2,262 sessions per tenor, 2017-01-03 onward — the only reference table that
+covers the whole option store.
+
+**Pulled from Yahoo (`^IRX`, `^FVX`, `^TNX`, `^TYX`), not ThetaData.** Not a
+preference: the free index tier refuses anything before 2024-01-01, which would
+leave every option year from 2017 to 2023 without a discount rate and no IV
+inversion possible across most of the history. Yahoo serves the same four CBOE
+indices back to the 1960s.
+
+**They are the same index by a different road.** Over the 249 sessions of 2025
+where both sources answer, they agree to 0.000000 at the median *and* the
+maximum, on all four tenors.
+
+**Gotcha.** Yahoo quotes the yield in percent (`^TNX` 4.57 = 4.57%) while
+ThetaData quotes 10x that, so the two need different divisors. `reference.py`
+divides Yahoo's by 100. The stored value is already a decimal; do not scale it
+again.
 
 ## `rates.parquet` — SOFR overnight
 
 `date`, `symbol` (always `SOFR`), `rate` (decimal). Calendar days, not trading
 days — 731 rows for two years.
 
-**Gotcha.** `interest_rate_history_eod` serves *only* SOFR; there are no other
-tenors. Use `yields.parquet` or `fred_rates.parquet` for curve shape.
+**Gotchas**
+
+- `interest_rate_history_eod` serves *only* SOFR; there are no other tenors.
+  Use `yields.parquet` for curve shape.
+- Tier-capped at 2024, unlike `yields.parquet`. Anything needing a rate before
+  then must use the treasury curve.
 
 ## `corporate_actions.parquet` — splits and dividends
 
@@ -353,37 +388,65 @@ no splits endpoint.
   falling *between* two closes affects a return, so this also makes splits
   after the sample end correctly irrelevant.
 
-## `ticker_check.parquet` — which symbols can be trusted
+## `symbology_check.parquet` — is this the company the universe names?
 
-One row per universe ticker. ThetaData's raw closes are back-adjusted with the
-pulled splits and compared to Yahoo's own; agreement means the ticker mapping
-and the split factors are both right.
+One row per (symbol, year) with stored chains. Replaces `ticker_check.parquet`,
+which compared price *levels* against Yahoo and was therefore a test of split
+bookkeeping — it condemned APH and MNST, both of which are the right company,
+and cleared nothing a rename could hide behind.
+
+This compares **log returns** instead, which a split cannot fool: a split is one
+outlier day, and a constant price ratio differences away to nothing.
 
 | Column | Type | Notes |
 |---|---|---|
-| `symbol` `yahoo_symbol` | String | |
-| `theta_days` `yahoo_days` `overlap_days` | UInt32 | |
-| `median_difference` `p99_difference` | Float64 | relative close difference |
-| `status` | String | see below |
+| `year` `symbol` | Int32, String | |
+| `theta_days` `overlap_days` | UInt32 | stored sessions, and sessions Yahoo could match |
+| `return_correlation` | Float64 | diagnostic only — see below |
+| `median_return_difference` | Float64 | **the discriminator** |
+| `action_gap_days` | UInt32 | days the two vendors disagree by >5% |
+| `status` | String | `ok`, `thin_overlap`, `suspect`, `wrong_instrument` |
 
-| Status | Count | Meaning |
-|---|---|---|
-| `ok` | 507 | median difference ≤ 0.5%; safe to adjust |
-| `yahoo_missing` | 10 | Yahoo purges delisted names — HES, JNPR, K, DFS all 404 |
-| `theta_missing` | 3 | ECHO, MRSH, VMRK — never pulled from ThetaData |
-| `thin_overlap` | 2 | AVB, EA — fewer than 20 overlapping days |
-| `mismatch` | 1 | MNST — the two sources disagree |
+| Status | Meaning |
+|---|---|
+| `ok` | median return difference ≤ 0.001 — in practice 2e-8, float noise |
+| `thin_overlap` | Yahoo could not arbitrate. **Unverified, not wrong** |
+| `suspect` | between the two populations; needs a human |
+| `wrong_instrument` | ≥ 0.005 — a different company |
 
-`trusted_symbols()` returns the `ok` list.
+Same company scores 0.0000; different companies 0.005 to 0.011. Five orders of
+magnitude of daylight, measured on 2024: APH vs KO 0.0099, MNST vs XOM 0.0111,
+and KO vs JNJ — two staples, the hardest case — 0.0052.
+
+| Year | ok | thin_overlap | wrong_instrument |
+|---|---|---|---|
+| 2017 | 414 | 89 | 3 |
+| 2018 | 423 | 80 | 3 |
+| 2019 | 443 | 65 | 3 |
+| 2020 | 455 | 53 | 3 |
+| 2021 | 465 | 46 | 4 |
+| 2022 | 476 | 37 | 1 |
+| 2023 | 489 | 23 | 1 |
+| 2024 | 498 | 18 | 0 |
+| 2025 | 507 | 12 | 0 |
 
 **Gotchas**
 
-- A `mismatch` means "these two sources disagree about this symbol", **not**
-  "ThetaData is wrong". MNST's 2026-08-11 2:1 is in Yahoo's splits series but
-  is not applied to its own 2025 closes — Yahoo contradicting itself.
-- `yahoo_missing` is where Yahoo is *worse* than ThetaData: it deletes delisted
-  tickers entirely, which is textbook survivorship bias. Those names need
-  excluding on point-in-time membership, not adjusting.
+- **Correlation must not decide anything.** One unadjusted corporate action
+  destroys it while the company is right: FTV 2025 scores 0.70 and HON 0.97 on
+  a single spinoff day each, with 248 of 249 days agreeing to 7e-8. The median
+  is immune to a one-day event; that is why it is the discriminator.
+- **`thin_overlap` grows the further back you go** — 12 in 2025, 89 in 2017 —
+  because Yahoo purges delisted tickers and older years hold more of them. The
+  deep years therefore carry meaningfully less verification, and the names it
+  cannot check are exactly the ones a survivorship filter would remove.
+- **The check can be wrong in the other direction**, when the *reference* is
+  the wrong company rather than the data. COL 2017 is Rockwell Collins at
+  $89-136, exactly what the 2017 universe names; Yahoo's modern `COL` is an
+  unrelated shell at $0.06-0.12. `loaders.TRUSTED_OVERRIDES` is where those
+  exceptions live.
+- Read it through `dal.usable_symbol_years()`, not by hand. The loaders already
+  refuse a condemned symbol-year unless you pass `trusted_only=False`.
 
 ## `earnings.parquet` — announcement dates
 
@@ -439,8 +502,8 @@ serves the real company under `BNY` and 404s on `BK`. That is why
 trades but has no chain in the 15,715-symbol option universe; `ECHO`, `MRSH`
 and `VMRK` are stale Wikipedia changes-table entries. There is no hand-written
 equivalent for Yahoo, because a list written by hand cannot anticipate a vendor
-that answers every symbol — `ticker_check.parquet` is the machine-generated
-substitute.
+that answers every symbol — `symbology_check.parquet` is the machine-generated
+substitute, and it is per-year because a ticker's owner changes over time.
 
 ## Rebuilding
 

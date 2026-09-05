@@ -197,17 +197,15 @@ def run(start: date, universe_path: str, chunk_size: int) -> None:
     )
     print("\nsplits:")
     print(splits_df.select("symbol", "date", "value"))
-    print("\nclose agreement:")
-    print(checks_df.group_by("status").agg(pl.len().alias("symbols")).sort("symbols", descending=True))
-    suspect = checks_df.filter(pl.col("status").is_in(["mismatch", "thin_overlap"]))
-    if not suspect.is_empty():
-        print("\nnames to distrust:")
-        print(suspect.select("symbol", "yahoo_symbol", "overlap_days", "median_difference", "status"))
+    print(
+        "\nWhether a symbol is the company the universe names is decided by"
+        "\n`data_pipelines.symbology`, on returns rather than price levels."
+    )
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--start", type=date.fromisoformat, default=date(2025, 1, 1))
+    parser.add_argument("--start", type=date.fromisoformat, default=date(2017, 1, 1))
     parser.add_argument("--universe", default=str(paths.UNIVERSE))
     parser.add_argument("--chunk-size", type=int, default=50)
     args = parser.parse_args()

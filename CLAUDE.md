@@ -74,7 +74,8 @@ findings index at the bottom.
 - **Free tier has no greeks, no IV and no open interest.** Implied vol has to be
   either taken from the VIX complex (free, EOD) or inverted from option mids
   yourself. Server-confirmed: greeks and IV need STANDARD, open interest needs
-  VALUE. `research/data_quality/analysis.py` re-probes this in a few seconds.
+  VALUE. The probe is a handful of `make_client()` calls against each endpoint;
+  it lived in `research/data_quality/analysis.py`, recoverable at `a863c25`.
 - **Prices are raw, never adjusted, and the client has no splits endpoint.**
   Fixed by `data_pipelines/corporate_actions.py` (splits + dividends from
   Yahoo). Use `load_underlying(with_actions=True, in_universe=True)` with
@@ -99,12 +100,12 @@ findings index at the bottom.
   Amentum. `split_adjusted_return()` does **not** catch these — there is no
   split row to apply. `data_pipelines.symbology` reports them per symbol-year
   as `action_gap_days`. NOT YET FIXED; fix belongs in `corporate_actions.py`.
-- **`ticker_check` marks MNST `mismatch`, and it is wrong.** `trusted_symbols()`
-  therefore drops Monster from every study that filters on it. MNST's daily
-  returns match Yahoo's to 2e-8; the flag is split-bookkeeping noise of the
-  same kind that made the first symbology check condemn APH. Prefer
-  `symbology_check.parquet`, which judges on returns and clears both.
-  NOT YET FIXED.
+- **`ticker_check.parquet` and `trusted_symbols()` are gone.** They compared
+  price *levels* to Yahoo, which makes them a test of split bookkeeping rather
+  than of identity: `ticker_check` marked MNST `mismatch` and so dropped
+  Monster from every study that filtered on it, though MNST's returns match
+  Yahoo's to 2e-8. Use `symbology_check.parquet` and
+  `dal.usable_symbol_years()`, which judge on returns and are per-year.
 - **Delisted names get a zero row, not a missing row.** HES 2025-07-18, JNPR
   2025-07-02, K 2025-12-11 each end with open=high=low=close=0 (HES with real
   volume attached). Zero, not null, so nothing downstream flags it.
@@ -116,7 +117,7 @@ findings index at the bottom.
 - **Never take Yahoo prices as spot.** The one property worth protecting is
   that the option quotes and the stock close are the same 17:15 ET snapshot.
   Yahoo is the split/dividend calendar only, and every name is verified with
-  `dal.trusted_symbols()` because Yahoo answers almost any symbol with
+  `dal.usable_symbol_years()` because Yahoo answers almost any symbol with
   something (VMRK returns a price that does not match the name it reports).
 - **Untraded option contracts have close=0, not null.** 53% of contract-days
   never trade, and their OHLC is 0.0. Filter on `volume > 0` or use the mid.
@@ -147,10 +148,15 @@ findings index at the bottom.
 
 ## Cost of a re-pull
 
-Do not casually re-run the expensive pulls. Full-year 2025 at 2 workers:
-option chains 3.5 hr / 1.6 GB, underlying 17 min, universe and reference
-seconds-to-a-minute. `options` is resumable — it skips symbols already on disk,
-so an interrupted pull can just be re-run.
+Do not casually re-run the expensive pulls. Measured, at 4 workers on Options
+STANDARD, per year: **option greeks ~2.0-2.4 hr and 4.7-9.1 GB**, **open
+interest ~1.0-1.6 hr and 0.1-0.4 GB**, index roots ~10 min. Underlying is 17
+min, universe and reference seconds-to-a-minute. The whole store from empty is
+~25 hr — `uv run python -m data_pipelines.build --dry-run` prints the plan.
+
+Every per-symbol pull is resumable: it skips symbols already on disk, so an
+interrupted pull is just re-run, and `build` against a full store is a cheap
+no-op that verifies coverage.
 
 ## Research conventions
 
@@ -162,9 +168,9 @@ than one study lives in `tools/`, not at the `research/` root:
 the two robust losses, Diebold-Mariano, and the covariance helpers) and
 `tools/backtest/` (the option-strategy engine).
 
-A study may cache an expensive intermediate under its own `results/` — as
-`single_name_vol/panel.py` does, ~15 minutes of chain inversion — but
-`data_store/` still belongs to the pipelines alone.
+A study may cache an expensive intermediate under its own `results/` — chain
+inversion across 500 names runs ~15 minutes — but `data_store/` still belongs
+to the pipelines alone.
 
 - `research/` and each topic folder need an `__init__.py`, because studies are
   run as modules: `uv run python -m research.volatility.analysis`.
@@ -190,10 +196,12 @@ A study may cache an expensive intermediate under its own `results/` — as
   because the F form returns NaN there. The correction bites hardest on
   Diebold-Mariano tests, where serial correlation is nearly irrelevant and
   cross-sectional correlation is everything.
-- Report what the sample cannot establish, not just what it shows. The
-  2024-2025 window has one dominant shock (April 2025), so point estimates are
-  clean and pairwise significance usually is not.
-- **Charge costs on the entry day, not just the exit.** `research/backtest`
+- Report what the sample cannot establish, not just what it shows. This was
+  acute when the store held 2024-2025 only, with April 2025 the single dominant
+  shock; the option history now runs 2017-2025 and spans the 2018 volmageddon,
+  the 2020 crash and 2022, so a horse race finally has more than one regime to
+  separate models on. Independent observations are still far fewer than rows.
+- **Charge costs on the entry day, not just the exit.** `tools/backtest`
   booked the entry half of the spread on the formation date and then dropped
   that date from the reported series, because it carries no market P&L — so
   only the exit crossing was charged and every break-even figure came out 2x
@@ -202,6 +210,13 @@ A study may cache an expensive intermediate under its own `results/` — as
   spend to `crossings x fraction x quoted spread x contracts`.
 
 ### Findings so far
+
+**The study directories these describe were reset in `7aada3f`; `research/` and
+`tools/` now hold only `__init__.py`.** The conclusions are kept because they
+are about the data and the method, and remain true — but the code that produced
+them is not on `master`. Recover any of it from `a863c25`, the commit before the
+reset, which has all 87 files. Figures and CSVs referenced below are there too,
+not in the working tree.
 
 `research/single_name_iv_reversion/` — the first strategy study, and the first
 user of `tools/backtest/`. Buy the S&P 500 names whose implied vol is low
@@ -244,9 +259,9 @@ index options quote at 0.242 in spread per dollar of vega against 4.69 for a
 be traded instead.
 
 **Two data traps this study hit, both of which flattered the result and neither
-of which errored.** (1) `trusted_symbols()` reads a check built against the
-2025 universe, so on a backfill it drops the names that did not survive — 84 of
-511 symbols in 2021. Use `dal.usable_symbol_years()`, which is per-year and
+of which errored.** (1) `trusted_symbols()` — since removed for this reason —
+read a check built against the 2025 universe, so on a backfill it dropped the
+names that did not survive: 84 of 511 symbols in 2021. Use `dal.usable_symbol_years()`, which is per-year and
 excludes only `wrong_instrument`; keep `thin_overlap`, which means the check
 could not run and falls disproportionately on delisted names. (2) A panel
 builder taking its symbol list from `available_option_symbols()` defaults to

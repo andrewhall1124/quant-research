@@ -164,13 +164,18 @@ close into that breaks the one property that makes close-to-close option P&L
 trustworthy.
 
 Because Yahoo answers almost any symbol with *something*, every name is
-verified rather than trusted. ThetaData's raw closes are back-adjusted with the
-pulled splits and compared to Yahoo's own; agreement means the ticker mapping
-and the split factors are both right. Of 523 universe tickers, 507 agree, 10
-have no Yahoo history at all (Yahoo purges delisted names — HES, JNPR, K and
-DFS all 404, so it is *worse* than ThetaData there), 3 are absent from
-ThetaData, and 3 disagree. `dal.trusted_symbols()` returns the clean list and
-`dal.load_ticker_check()` says why the rest failed.
+verified rather than trusted — and per year, because a ticker's owner changes.
+`data_pipelines.symbology` compares the `underlying_price` on every stored
+greeks row to Yahoo's close for the same name, on **log returns** rather than
+price levels, so a split cannot fool it. Same company scores a median return
+difference of 0.0000; a different company scores 0.005 to 0.011.
+
+Across 2017-2025 it clears 4,170 symbol-years, cannot arbitrate 423 (Yahoo
+purges delisted names, so it is *worse* than ThetaData there), and condemns 18
+— `COR`, `DOC` and `GEN` before their renames, and `META` in 2021, where the
+ticker belonged to someone else and ThetaData served a $15 stock in Facebook's
+place. Read it with `dal.usable_symbol_years()`; the loaders already refuse a
+condemned symbol-year unless you pass `trusted_only=False`.
 
 Two gotchas found the hard way:
 
