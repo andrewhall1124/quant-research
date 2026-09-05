@@ -32,17 +32,25 @@ from data_access_layer import paths
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
 PANEL_PATH = RESULTS_DIR / "straddle_panel.parquet"
 
-# Selection targets. The chain is read wider than the straddle is selected so
-# that a contract picked at t is still in the frame at t+1 after a day of spot
-# drift — otherwise a big move would silently delete exactly the observations
-# that matter most.
+# Two bands, and the gap between them is deliberate.
+#
+# The chain is READ loosely — no quote requirement, no IV-error requirement,
+# and wide dte and moneyness bands — because the read filters must never decide
+# whether tomorrow's mark exists. Selecting on a strict filter and then looking
+# for the same contract inside that same strict filter a day later silently
+# deletes a position whenever its IV inversion degraded or spot drifted, which
+# is a look-ahead screen: at the formation close you do not know either.
+#
+# The straddle is SELECTED strictly, on conditions all observable at t.
 TARGET_DTE = 30
 SELECT_DTE_MIN, SELECT_DTE_MAX = 20, 45
-READ_DTE_MIN, READ_DTE_MAX = 15, 55
+READ_DTE_MIN, READ_DTE_MAX = 10, 60
 SELECT_MONEYNESS = 0.05
-READ_MONEYNESS = 0.30
+READ_MONEYNESS = 0.40
 # ~3% of contract-days fail to invert and come back pinned near 0.5 with a
-# +/-100 error. The straddle's IV is the whole signal, so those are dropped.
+# +/-100 error. The straddle's IV is the whole signal, so a leg that failed to
+# invert cannot be selected — but it can still mark a position opened
+# yesterday, which needs a price and not an implied vol.
 MAX_IV_ERROR = 0.02
 
 CHAIN_COLUMNS = [
@@ -53,15 +61,18 @@ CHAIN_COLUMNS = [
 
 
 def read_chain(symbol: str, years: list[int]) -> pl.DataFrame:
-    """The near-dated, near-the-money slice of one symbol's whole history."""
+    """One symbol's whole history, filtered only on where the contract sits.
+
+    Deliberately keeps unquoted contracts and failed IV inversions: both are
+    excluded from *selection* later, but both can legitimately mark a position
+    that was opened the day before.
+    """
     return load_option_greeks(
         symbol,
         years=years,
         min_dte=READ_DTE_MIN,
         max_dte=READ_DTE_MAX,
         max_moneyness=READ_MONEYNESS,
-        max_iv_error=MAX_IV_ERROR,
-        quoted_only=True,
         columns=CHAIN_COLUMNS,
         trusted_only=False,
     )
@@ -81,7 +92,7 @@ def pair_legs(chain_df: pl.DataFrame) -> pl.DataFrame:
             "date", "expiration", "strike", "dte", "underlying_price",
             *[
                 pl.col(name).alias(f"{tag}_{name}")
-                for name in ("bid", "ask", "mid", "implied_vol",
+                for name in ("bid", "ask", "mid", "implied_vol", "iv_error",
                              "delta", "vega", "gamma", "theta", "volume")
             ],
         )
@@ -112,6 +123,23 @@ def add_straddle_terms(pairs_df: pl.DataFrame) -> pl.DataFrame:
     )
 
 
+def selectable(straddles_df: pl.DataFrame) -> pl.DataFrame:
+    """The straddles eligible to be *opened*, on t-observable conditions only.
+
+    Both legs must carry a live two-sided quote and an IV that actually
+    inverted. Every condition here is visible at the formation close; none of
+    them refers to the next session.
+    """
+    return straddles_df.filter(
+        pl.col("c_bid") > 0,
+        pl.col("p_bid") > 0,
+        pl.col("c_implied_vol") > 0,
+        pl.col("p_implied_vol") > 0,
+        pl.col("c_iv_error").abs() <= MAX_IV_ERROR,
+        pl.col("p_iv_error").abs() <= MAX_IV_ERROR,
+    )
+
+
 def select_straddles(straddles_df: pl.DataFrame) -> pl.DataFrame:
     """One straddle per date: nearest expiry to 30 dte, nearest strike to spot.
 
@@ -120,7 +148,7 @@ def select_straddles(straddles_df: pl.DataFrame) -> pl.DataFrame:
     and turn a term-structure move into signal.
     """
     with_target = (
-        straddles_df.filter(
+        selectable(straddles_df).filter(
             pl.col("dte").is_between(SELECT_DTE_MIN, SELECT_DTE_MAX)
         )
         .with_columns((pl.col("dte") - TARGET_DTE).abs().alias("dte_gap"))
@@ -152,11 +180,16 @@ def select_straddles(straddles_df: pl.DataFrame) -> pl.DataFrame:
 def attach_next_day(selected_df: pl.DataFrame, straddles_df: pl.DataFrame) -> pl.DataFrame:
     """Join each selected straddle to its own quote at the next session.
 
-    The next session is the next date *this symbol's chain* prints, not a
-    calendar day, so a market holiday shortens nothing and a missing symbol-day
-    is skipped rather than silently spanning two sessions.
+    The next session comes from the symbol's *whole* chain rather than from the
+    selected rows, so a day on which nothing was selectable still counts as a
+    session and the hold never silently spans two of them. `portfolio.py`
+    re-checks that gap against the market calendar the panel spans.
+
+    `tomorrow` is drawn from the loose frame, so a contract whose quote widened,
+    went one-sided or stopped inverting overnight still marks the position it
+    was opened in. `next_two_sided` records which of those happened.
     """
-    sessions = selected_df.select("date").unique().sort("date")
+    sessions = straddles_df.select("date").unique().sort("date")
     next_session = sessions.with_columns(
         pl.col("date").shift(-1).alias("next_date")
     )
@@ -171,6 +204,7 @@ def attach_next_day(selected_df: pl.DataFrame, straddles_df: pl.DataFrame) -> pl
         pl.col("straddle_delta").alias("next_straddle_delta"),
         pl.col("dte").alias("next_dte"),
         pl.col("underlying_price").alias("next_underlying_price"),
+        ((pl.col("c_bid") > 0) & (pl.col("p_bid") > 0)).alias("next_two_sided"),
     )
     return (
         selected_df.join(next_session, on="date", how="left")
@@ -202,7 +236,7 @@ def build_symbol(symbol: str, years: list[int]) -> pl.DataFrame | None:
         "straddle_iv", "next_straddle_iv",
         "straddle_vega", "next_straddle_vega",
         "straddle_delta", "next_straddle_delta",
-        "straddle_gamma", "straddle_theta", "straddle_volume",
+        "straddle_gamma", "straddle_theta", "straddle_volume", "next_two_sided",
         "c_mid", "p_mid", "c_implied_vol", "p_implied_vol",
         "c_delta", "p_delta", "c_vega", "p_vega",
     )

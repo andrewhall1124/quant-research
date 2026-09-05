@@ -163,40 +163,55 @@ def plot_lag_decay(lag_df: pl.DataFrame) -> None:
         xlabel="Sessions between signal and entry", ylabel="Annualised Sharpe (gross)",
     )
     for lag, sharpe in zip(lag_df["signal_lag"], lag_df["gross_sharpe"]):
-        left.text(lag, sharpe, f"{sharpe:.2f}", ha="center", va="bottom", fontsize=8)
+        left.text(
+            lag, sharpe, f"{sharpe:.2f}", ha="center", fontsize=8,
+            va="bottom" if sharpe >= 0 else "top",
+        )
 
-    right.bar(
-        lag_df["signal_lag"], lag_df["breakeven_spread_fraction"] * 100,
-        color=SHORT_COLOUR, width=0.6,
-    )
-    right.axhline(50, color=INK, lw=1.0, ls="--")
-    right.text(
-        4.4, 51, "half the quoted spread", fontsize=8, color=INK,
-        ha="right", va="bottom",
-    )
+    breakeven = lag_df["breakeven_spread_fraction"].to_numpy() * 100
+    right.bar(lag_df["signal_lag"], breakeven, color=SHORT_COLOUR, width=0.6)
+    right.axhline(0, color=INK, lw=0.8)
+    for lag, value in zip(lag_df["signal_lag"], breakeven):
+        right.text(
+            lag, value, f"{value:.2f}%", ha="center", fontsize=8,
+            va="bottom" if value >= 0 else "top",
+        )
+    # A linear axis, not log: half the values are negative now, and a log axis
+    # would silently drop them. The 50% a real crossing costs is an order of
+    # magnitude off this scale, so it is stated rather than drawn.
     style_axes(
         right,
-        "Share of the quoted spread the strategy can pay",
+        "Share of the quoted spread the strategy can pay\n"
+        "A real crossing costs ~50%, far above this axis",
         xlabel="Sessions between signal and entry",
         ylabel="Break-even spread fraction (%)",
     )
-    right.set_yscale("log")
     save(fig, "fig02_lag_decay.png")
 
 
 def plot_decile_pnl(decile_df: pl.DataFrame) -> None:
     fig, (left, right) = plt.subplots(1, 2, figsize=(10, 4), sharey=True)
-    for ax, lag, colour in ((left, 0, LONG_COLOUR), (right, 1, ACCENT)):
+    # Honest specification on the left, so the reader meets the real answer
+    # before the artefact.
+    for ax, lag, colour, note in (
+        (left, 1, ACCENT, "Lag 1 (honest): signal at t, entry at t+1"),
+        (right, 0, LONG_COLOUR, "Lag 0: signal and entry at the same close"),
+    ):
         subset = decile_df.filter(pl.col("signal_lag") == lag).sort("iv_decile")
         ax.bar(subset["iv_decile"], subset["mean"], color=colour, width=0.7)
         ax.axhline(0, color=INK, lw=0.8)
         style_axes(
             ax,
-            f"Delta-hedged P&L by IV z-score decile — lag {lag}",
+            note,
             xlabel="Decile of rolling 60-session IV z-score (0 = cheapest)",
-            ylabel="Vol points earned per day" if lag == 0 else "",
+            ylabel="Vol points earned per day" if lag == 1 else "",
         )
         ax.set_xticks(range(10))
+    fig.suptitle(
+        "Delta-hedged P&L by IV z-score decile: the gradient is entirely the "
+        "same-close artefact",
+        fontsize=11, color=INK, x=0.012, ha="left",
+    )
     save(fig, "fig03_decile_pnl.png")
 
 
@@ -483,6 +498,58 @@ def earnings_exclusion_stats(panel_df: pl.DataFrame, prepared_by_lag: dict) -> p
     return pl.DataFrame(rows)
 
 
+AUDIT_VARIANTS = [
+    ("Honest — as reported", {}),
+    ("Require the contract to still be quoted tomorrow", {"require_next_two_sided": True}),
+    ("Z-score against the full-sample moments", {"full_sample_zscore": True}),
+    ("Today's index membership, applied to all history", {"static_universe": True}),
+    (
+        "All three defects together",
+        {"require_next_two_sided": True, "full_sample_zscore": True,
+         "static_universe": True},
+    ),
+]
+
+
+def lookahead_audit(panel_df: pl.DataFrame) -> pl.DataFrame:
+    """What each plausible look-ahead would have been worth, one at a time.
+
+    Every row after the first is a mistake this study could have made and in
+    one case did make. The point of running them is that all of them turn a
+    t-statistic under 1 into one over 2, which is the whole distance between
+    "nothing here" and a publishable result.
+    """
+    rows = []
+    for label, flags in AUDIT_VARIANTS:
+        config = pf.Config(signal_lag=1, label=label, **flags)
+        _, _, stats = pf.run(panel_df, config)
+        rows.append(stats)
+    return pl.DataFrame(rows)
+
+
+def plot_lookahead_audit(audit_df: pl.DataFrame) -> None:
+    fig, ax = plt.subplots(figsize=(9, 4.4))
+    labels = audit_df["label"].to_list()
+    values = audit_df["gross_tstat"].to_list()
+    positions = np.arange(len(labels))[::-1]
+    colours = [ACCENT] + [SHORT_COLOUR] * (len(labels) - 1)
+    ax.barh(positions, values, color=colours, height=0.6)
+    ax.axvline(2, color=INK, lw=1.0, ls="--")
+    ax.text(2.05, positions.max() + 0.45, "t = 2", fontsize=8, color=INK)
+    for position, value in zip(positions, values):
+        ax.text(value + 0.05, position, f"{value:.2f}", va="center", fontsize=8.5)
+    style_axes(
+        ax,
+        "What a look-ahead is worth: lag-1 gross t-statistic under each defect\n"
+        "Every one of them clears the bar the honest specification misses",
+        xlabel="Gross t-statistic (Newey-West, 5 lags)",
+    )
+    ax.set_yticks(positions)
+    ax.set_yticklabels([label.replace(" — ", "\n") for label in labels], fontsize=8)
+    ax.set_xlim(0, max(values) * 1.18)
+    save(fig, "fig11_lookahead_audit.png")
+
+
 def robustness_grid(panel_df: pl.DataFrame) -> pl.DataFrame:
     rows = []
     for window in (20, 60, 120, 252):
@@ -523,6 +590,10 @@ def main() -> None:
     exclusion_df = earnings_exclusion_stats(panel_df, prepared_by_lag)
     write_csv(exclusion_df, "earnings_exclusion.csv")
 
+    print("look-ahead audit")
+    audit_df = lookahead_audit(panel_df)
+    write_csv(audit_df, "lookahead_audit.csv")
+
     print("robustness grid")
     grid_df = robustness_grid(panel_df)
     write_csv(grid_df, "robustness_grid.csv")
@@ -549,6 +620,7 @@ def main() -> None:
     plot_earnings(earnings_df, exclusion_df)
     plot_robustness(grid_df)
     plot_coverage(daily_by_lag[0])
+    plot_lookahead_audit(audit_df)
 
     print("\nheadline")
     with pl.Config(tbl_cols=-1, tbl_width_chars=200):

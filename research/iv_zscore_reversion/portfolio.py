@@ -61,26 +61,49 @@ class Config:
     max_window_span_ratio: float = 2.0
     spread_fractions: tuple[float, ...] = (0.25, 0.50)
     exclude_earnings_within: int | None = None
+    # Deliberate defects, used only by the look-ahead audit in `analysis.py`.
+    # Each one is a mistake this study could plausibly have made; turning it on
+    # measures what that mistake would have been worth. All default to the
+    # honest setting.
+    require_next_two_sided: bool = False  # admit a name only if it is still quoted tomorrow
+    full_sample_zscore: bool = False   # score against the whole sample's moments
+    static_universe: bool = False      # today's index membership, applied to all history
     label: str = "base"
     years: tuple[int, ...] | None = None
     extra: dict = field(default_factory=dict)
 
 
-def screen_panel(panel_df: pl.DataFrame) -> pl.DataFrame:
+def screen_panel(panel_df: pl.DataFrame, static_universe: bool = False) -> pl.DataFrame:
     """Drop what cannot be traded or cannot be trusted, before any ranking.
+
+    Every screen here is decidable at the formation close. In particular there
+    is **no screen on the next session's quote**: requiring tomorrow's mark to
+    exist before admitting a name to today's cross-section would be look-ahead,
+    and it would bias the sample toward contracts that stayed liquid. Positions
+    that turn out to be unmarkable are handled in `add_contract_pnl`, after
+    they have already been chosen.
 
     Order matters only in that all of it happens before the z-score: screening
     after ranking would let a name that is about to be dropped still push the
     decile boundary around.
     """
     usable = usable_symbol_years().with_columns(pl.col("year").cast(pl.Int32))
-    members = (
-        load_universe(with_history=True)
-        .select("date", pl.col("ticker").alias("symbol"))
-        .unique()
-    )
+    universe_df = load_universe(with_history=True)
+    if static_universe:
+        # Survivorship: pretend the current index was always the index.
+        latest = universe_df.filter(pl.col("date") == universe_df["date"].max())
+        members = (
+            panel_df.select("date").unique()
+            .join(latest.select(pl.col("ticker").alias("symbol")), how="cross")
+        )
+    else:
+        members = (
+            universe_df.select("date", pl.col("ticker").alias("symbol")).unique()
+        )
     # A split between the two closes re-strikes the contract, so the strike
     # match at t+1 is a different instrument and the spot move is fictional.
+    # Not look-ahead: a split ex-date is announced weeks in advance and is
+    # public at the formation close.
     splits = (
         load_corporate_actions(kind="split")
         .select("symbol", pl.col("date").alias("split_date"))
@@ -91,7 +114,6 @@ def screen_panel(panel_df: pl.DataFrame) -> pl.DataFrame:
         .join(usable, on=["symbol", "year"], how="inner")
         .join(members, on=["date", "symbol"], how="inner")
         .filter(
-            pl.col("next_straddle_mid").is_not_null(),
             pl.col("straddle_vega") > 0,
             pl.col("straddle_iv") > 0.01,
             pl.col("straddle_mid") > 0,
@@ -110,7 +132,33 @@ def screen_panel(panel_df: pl.DataFrame) -> pl.DataFrame:
         .drop("split_in_hold")
         .sort("symbol", "date")
     )
-    return screened
+    return mark_hold_span(screened)
+
+
+def mark_hold_span(screened_df: pl.DataFrame) -> pl.DataFrame:
+    """Flag any hold that does not span exactly one market session.
+
+    `panel.py` takes the next session from the symbol's own chain, which is
+    right when the symbol prints every day and wrong when it has a gap — there
+    the hold would silently cover two or more sessions and pick up two or more
+    days of P&L. The calendar is the union of dates the panel spans, which is
+    the market calendar for a 500-name cross-section.
+    """
+    calendar = (
+        screened_df.select("date").unique().sort("date")
+        .with_row_index("session").with_columns(pl.col("session").cast(pl.Int64))
+    )
+    return (
+        screened_df.join(calendar, on="date", how="left")
+        .join(
+            calendar.rename({"date": "next_date", "session": "next_session"}),
+            on="next_date", how="left",
+        )
+        .with_columns(
+            ((pl.col("next_session") - pl.col("session")) == 1)
+            .fill_null(False).alias("one_session_hold")
+        )
+    )
 
 
 def add_signal(screened_df: pl.DataFrame, config: Config) -> pl.DataFrame:
@@ -130,6 +178,14 @@ def add_signal(screened_df: pl.DataFrame, config: Config) -> pl.DataFrame:
         (pl.col("date") - pl.col("date").shift(window - 1))
         .dt.total_days().over("symbol").alias("window_span"),
     )
+    if config.full_sample_zscore:
+        # Look-ahead by construction: the moments use the symbol's entire
+        # history, including every date after the one being scored.
+        scored = scored.with_columns(
+            pl.col("straddle_iv").mean().over("symbol").alias("iv_mean"),
+            pl.col("straddle_iv").std().over("symbol").alias("iv_std"),
+            pl.lit(0).alias("window_span"),
+        )
     scored = scored.with_columns(
         pl.when(
             (pl.col("iv_std") > 0)
@@ -211,6 +267,13 @@ def add_contract_pnl(frame_df: pl.DataFrame) -> pl.DataFrame:
     it reads as the vol points the trade actually earned — the only unit in
     which a $400 stock and a $30 stock are comparable.
     """
+    # A position can be chosen and then turn out to have no usable mark: the
+    # contract stops printing, or the hold spans a gap in the symbol's chain.
+    # Neither is knowable at the formation close, so the position is kept and
+    # carried flat rather than deleted — deleting it would be the same
+    # look-ahead screen removed from `screen_panel`, reintroduced one stage
+    # later. It is 0.06% of rows; `unmarked_share` in the summary reports it.
+    unmarked = pl.col("next_straddle_mid").is_null() | ~pl.col("one_session_hold")
     option_pnl = (pl.col("next_straddle_mid") - pl.col("straddle_mid")) * MULTIPLIER
     hedge_pnl = (
         -pl.col("straddle_delta")
@@ -218,10 +281,14 @@ def add_contract_pnl(frame_df: pl.DataFrame) -> pl.DataFrame:
         * (pl.col("next_underlying_price") - pl.col("underlying_price"))
     )
     return frame_df.with_columns(
-        option_pnl.alias("option_pnl"),
-        hedge_pnl.alias("hedge_pnl"),
-        (option_pnl + hedge_pnl).alias("contract_pnl"),
-        ((pl.col("next_straddle_iv") - pl.col("straddle_iv")) * 100).alias("iv_change_points"),
+        unmarked.alias("unmarked"),
+        pl.when(unmarked).then(0.0).otherwise(option_pnl).alias("option_pnl"),
+        pl.when(unmarked).then(0.0).otherwise(hedge_pnl).alias("hedge_pnl"),
+        pl.when(unmarked).then(0.0).otherwise(option_pnl + hedge_pnl)
+        .alias("contract_pnl"),
+        pl.when(unmarked).then(0.0)
+        .otherwise((pl.col("next_straddle_iv") - pl.col("straddle_iv")) * 100)
+        .alias("iv_change_points"),
     ).with_columns(
         (pl.col("contract_pnl") / pl.col("straddle_vega")).alias("pnl_per_vega"),
         # First-order vega attribution: what the position would have made if
@@ -264,7 +331,11 @@ def build_book(traded_df: pl.DataFrame, config: Config) -> pl.DataFrame:
         .alias("contracts")
     )
     entry_spread = pl.col("straddle_spread") * MULTIPLIER * pl.col("contracts")
-    exit_spread = pl.col("next_straddle_spread") * MULTIPLIER * pl.col("contracts")
+    exit_spread = (
+        pl.when(pl.col("unmarked")).then(0.0)
+        .otherwise(pl.col("next_straddle_spread"))
+        * MULTIPLIER * pl.col("contracts")
+    )
     hedge_notional = (
         pl.col("straddle_delta").abs() * MULTIPLIER * pl.col("contracts")
         * (pl.col("underlying_price") + pl.col("next_underlying_price"))
@@ -301,6 +372,8 @@ def daily_pnl(book_df: pl.DataFrame, config: Config) -> pl.DataFrame:
         .alias("gross_premium"),
         pl.col("pnl").filter(pl.col("side") == 1).sum().alias("long_pnl"),
         pl.col("pnl").filter(pl.col("side") == -1).sum().alias("short_pnl"),
+        pl.col("unmarked").mean().alias("unmarked_share"),
+        (~pl.col("next_two_sided").fill_null(False)).mean().alias("one_sided_mark_share"),
     ]
     daily = book_df.group_by("date").agg(aggregates).sort("date")
     for fraction in config.spread_fractions:
@@ -346,15 +419,22 @@ def summarize(daily_df: pl.DataFrame, config: Config) -> dict:
         "gross_sharpe": annualized_sharpe(gross),
         "gross_total": float(np.nansum(gross)),
         "hit_rate": float(np.mean(gross > 0)),
+        "unmarked_share": float(daily_df["unmarked_share"].mean()),
+        "one_sided_mark_share": float(daily_df["one_sided_mark_share"].mean()),
         "gross_premium_per_day": float(daily_df["gross_premium"].mean()),
         # The book has no capital base of its own, so the only honest scale
         # reference is the premium it puts up: P&L as a share of that.
         "gross_return_on_premium_bps": float(
             np.nanmean(gross) / daily_df["gross_premium"].mean() * 10_000
         ),
+        # Ratio of sums, interpretable only when the denominator is itself
+        # distinguishable from zero — at lag 1 the book earns nothing, so the
+        # ratio explodes and means nothing. `vega_r2` is well defined either
+        # way: how much of the daily P&L the first-order vega term tracks.
         "vega_share_of_pnl": float(
             np.nansum(daily_df["vega_pnl"].to_numpy()) / np.nansum(gross)
         ),
+        "vega_r2": vega_r2(daily_df),
     }
     cost_at_one = daily_df["spread_cost_full"].to_numpy()
     hedge = daily_df["hedge_cost"].to_numpy()
@@ -373,6 +453,16 @@ def summarize(daily_df: pl.DataFrame, config: Config) -> dict:
         stats[f"net_{tag}_tstat"] = net_t
         stats[f"net_{tag}_sharpe"] = annualized_sharpe(net)
     return stats
+
+
+def vega_r2(daily_df: pl.DataFrame) -> float:
+    """Share of daily P&L variance tracked by vega x change in implied vol."""
+    gross = daily_df["gross_pnl"].to_numpy()
+    vega = daily_df["vega_pnl"].to_numpy()
+    keep = ~(np.isnan(gross) | np.isnan(vega))
+    if keep.sum() < 30 or gross[keep].std() == 0 or vega[keep].std() == 0:
+        return float("nan")
+    return float(np.corrcoef(gross[keep], vega[keep])[0, 1] ** 2)
 
 
 def annualized_sharpe(values: np.ndarray) -> float:
@@ -395,6 +485,8 @@ def run(panel_df: pl.DataFrame, config: Config, prepared_df: pl.DataFrame | None
     """
     if prepared_df is None:
         prepared_df = prepare(panel_df, config)
+    if config.require_next_two_sided:
+        prepared_df = prepared_df.filter(pl.col("next_two_sided") == True)  # noqa: E712
     traded = prepared_df
     if config.years is not None:
         traded = traded.filter(pl.col("date").dt.year().is_in(list(config.years)))
@@ -410,7 +502,7 @@ def run(panel_df: pl.DataFrame, config: Config, prepared_df: pl.DataFrame | None
 
 def prepare(panel_df: pl.DataFrame, config: Config) -> pl.DataFrame:
     """Screen, score, cost-screen and price every symbol-day. The slow part."""
-    screened = screen_panel(panel_df)
+    screened = screen_panel(panel_df, static_universe=config.static_universe)
     scored = add_signal(screened, config)
     tradable = apply_liquidity(scored, config)
     with_pnl = add_contract_pnl(tradable)
