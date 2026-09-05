@@ -1,9 +1,8 @@
 """Does a backfilled option root actually belong to the name we asked for?
 
 ThetaData answers an unknown symbol with *some* instrument rather than an
-error. Across a single year that is the BNY problem and `corporate_actions.py`
-already catches it by comparing ThetaData's stock close to Yahoo's. Across a
-backfill it becomes worse in two ways:
+error. Across a single year that is the BNY problem, which the ticker overrides
+already handle. Across a backfill it becomes worse in two ways:
 
 - The universe carries today's ticker at every historical date, because
   Wikipedia's constituent table only knows the current symbol. So a backfill
@@ -39,23 +38,22 @@ constant price ratio differences away to nothing. Measured on 2024:
 
 so the two populations do not come close to touching.
 
-Costs no ThetaData requests at all: it reads the greeks already on disk.
+Costs no ThetaData requests at all: it reads the greeks already on disk,
+through the access layer, one symbol at a time.
 
-    uv run python -m data_pipelines.symbology --years 2021 2022 2023 2024
+    uv run python -m data_pipelines.cli symbology --years 2021 2022 2023 2024
 """
 
 import argparse
-import os
 import time
 from datetime import date
-from pathlib import Path
 
 import polars as pl
 from dotenv import load_dotenv
 
+import data_access_layer as dal
 from data_access_layer import paths
-from data_pipelines.common import normalize_ticker
-from data_pipelines.corporate_actions import fetch_yahoo
+from data_pipelines.utils import fetch_yahoo, symbol_map, write_atomic
 
 load_dotenv()
 
@@ -84,51 +82,43 @@ MAX_ABSOLUTE_LOG_RETURN = 0.3
 
 
 def read_stored_spots(year: int) -> pl.DataFrame:
-    """One (symbol, date, spot) row per stored symbol-day.
+    """One (option_symbol, date, spot) row per stored symbol-day.
 
-    The greeks file spells the option root in its  column, which is the
-    dot-stripped spelling (BRKB), not the universe one.
+    Read through `dal.load_option_greeks`, so the chain files are opened the
+    same way research code opens them. The root spelling comes from the file
+    name, which is the dot-stripped one (BRKB), not the universe spelling.
     """
-    directory = paths.option_dir("option_greeks", year)
-    files = sorted(directory.glob("*.parquet"))
-    if not files:
+    symbols = dal.available_option_symbols(year=year)
+    if not symbols:
         raise FileNotFoundError(
-            f"{directory} holds no chains. Pull the year first with:\n"
-            f"  uv run python -m data_pipelines.option_greeks --year {year}"
+            f"{paths.option_dir('option_greeks', year)} holds no chains."
+            f" Pull the year first with:\n"
+            f"  uv run python -m data_pipelines.cli option-greeks --year {year}"
         )
-    return (
-        pl.scan_parquet(files)
+
+    start, end = date(year, 1, 1), date(year, 12, 31)
+    frames = [
+        dal.load_option_greeks(symbol, start, end, lazy=True)
         .select(
-            pl.col("symbol").alias("option_symbol"),
-            pl.col("underlying_timestamp").dt.date().alias("date"),
-            pl.col("underlying_price"),
+            pl.lit(symbol).alias("option_symbol"),
+            "date",
+            "underlying_price",
         )
         .filter(pl.col("underlying_price") > 0)
         .group_by("option_symbol", "date")
         .agg(pl.col("underlying_price").median().alias("theta_spot"))
-        .collect()
-    )
+        for symbol in symbols
+    ]
+    return pl.concat(frames, how="vertical_relaxed").collect()
 
 
-def build_symbol_map(universe_path: Path) -> pl.DataFrame:
-    """Option-root spelling back to the universe and Yahoo spellings.
-
-    The option feed strips the dot (BRKB, BFB), so the mapping cannot be
-    recovered from the root alone and is rebuilt from the universe instead.
-    """
-    tickers = pl.read_parquet(universe_path)["ticker"].unique().to_list()
-    return pl.DataFrame(
-        {
-            "option_symbol": [normalize_ticker(t, "option") for t in tickers],
-            "symbol": tickers,
-            "yahoo_symbol": [normalize_ticker(t, "yahoo") for t in tickers],
-        }
-    ).unique("option_symbol")
-
-
-def check_year(year: int, universe_path: Path, chunk_size: int) -> pl.DataFrame:
+def check_year(year: int, chunk_size: int) -> pl.DataFrame:
     spots_df = read_stored_spots(year)
-    mapping_df = build_symbol_map(universe_path)
+    # The whole history, not just this year: a root stored for 2019 belongs to
+    # a name the universe may only carry in a later year.
+    mapping_df = symbol_map().select(
+        "option_symbol", pl.col("ticker").alias("symbol"), "yahoo_symbol"
+    ).unique("option_symbol")
     named = spots_df.join(mapping_df, on="option_symbol", how="left")
 
     unmapped = named.filter(pl.col("symbol").is_null())["option_symbol"].unique().to_list()
@@ -196,12 +186,12 @@ def check_year(year: int, universe_path: Path, chunk_size: int) -> pl.DataFrame:
     )
 
 
-def run(years: list[int], universe_path: str, chunk_size: int) -> None:
+def run(years: list[int], chunk_size: int) -> None:
     started = time.perf_counter()
     frames = []
     for year in years:
         print(f"=== {year} ===")
-        frames.append(check_year(year, Path(universe_path), chunk_size))
+        frames.append(check_year(year, chunk_size))
 
     checks_df = pl.concat(frames, how="vertical_relaxed")
 
@@ -210,7 +200,7 @@ def run(years: list[int], universe_path: str, chunk_size: int) -> None:
     # would drop every year checked before it — and the table is the record of
     # which symbol-years are safe to use.
     if output_path.exists():
-        kept = pl.read_parquet(output_path).filter(~pl.col("year").is_in(years))
+        kept = dal.load_symbology_check().filter(~pl.col("year").is_in(years))
         if kept.height and kept.columns == checks_df.columns:
             checks_df = pl.concat([kept, checks_df], how="vertical_relaxed")
         elif kept.height:
@@ -219,9 +209,7 @@ def run(years: list[int], universe_path: str, chunk_size: int) -> None:
                 f" ({sorted(set(kept['year'].to_list()))}); re-run those years"
             )
     checks_df = checks_df.sort("year", "status", "symbol")
-    temp_path = output_path.with_suffix(output_path.suffix + ".tmp")
-    checks_df.write_parquet(temp_path)
-    os.replace(temp_path, output_path)
+    write_atomic(checks_df, output_path)
 
     print(f"\ndone in {time.perf_counter() - started:.1f}s | wrote {output_path}")
     print(checks_df.group_by("year", "status").len().sort("year", "status"))
@@ -243,14 +231,10 @@ def run(years: list[int], universe_path: str, chunk_size: int) -> None:
         print(actions.select("year", "symbol", "action_gap_days", "median_return_difference"))
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
+def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--years", type=int, nargs="+", required=True)
-    parser.add_argument("--universe", default=str(paths.UNIVERSE_HISTORY))
     parser.add_argument("--chunk-size", type=int, default=50)
-    args = parser.parse_args()
-    run(args.years, args.universe, args.chunk_size)
 
 
-if __name__ == "__main__":
-    main()
+def main(args: argparse.Namespace) -> None:
+    run(args.years, args.chunk_size)

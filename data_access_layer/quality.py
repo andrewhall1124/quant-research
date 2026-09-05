@@ -1,6 +1,6 @@
 """Which symbol-years are the company the universe says they are.
 
-`data_pipelines.symbology` writes the verdict; this module reads it and turns it
+`data_pipelines.cli symbology` writes the verdict; this module reads it and turns it
 into the two screens a multi-year study applies. The option loaders no longer
 apply either one themselves — they are pure reads — so a study that cares must
 join against `usable_symbol_years` explicitly.
@@ -40,7 +40,7 @@ def load_symbology_check(lazy: bool = False) -> pl.LazyFrame | pl.DataFrame:
     """Per-symbol, per-year verdict on whether an option root is the right company.
 
     Keyed on (year, symbol), not date, so it takes no window — it is 4,613 rows.
-    See `data_pipelines/symbology.py`. Statuses are:
+    See `data_pipelines/symbology_pipeline.py`. Statuses are:
 
     * `ok` — the option store's `underlying_price` returns match Yahoo's for
       that ticker, so it is the company the universe claims.
@@ -57,7 +57,7 @@ def load_symbology_check(lazy: bool = False) -> pl.LazyFrame | pl.DataFrame:
     return on that one day is not.
     """
     frame = pl.scan_parquet(
-        require(paths.SYMBOLOGY_CHECK, "data_pipelines.symbology")
+        require(paths.SYMBOLOGY_CHECK, "data_pipelines.cli symbology")
     ).sort("year", "symbol")
     return deliver(frame, lazy)
 
@@ -92,7 +92,7 @@ def untrusted_symbol_years(
     """The (year, symbol) pairs a study should not read, as a plain set.
 
     Empty when the check has never been run, which is deliberate: a missing
-    verdict must not silently empty a study. Run `data_pipelines.symbology`.
+    verdict must not silently empty a study. Run `data_pipelines.cli symbology`.
     """
     if not paths.SYMBOLOGY_CHECK.exists():
         return set()

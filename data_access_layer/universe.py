@@ -23,8 +23,8 @@ def load_universe(
     way ThetaData does; `filter_to_universe` maps across the difference.
     """
     sources = [
-        require(paths.UNIVERSE_HISTORY, "data_pipelines.universe --history"),
-        require(paths.UNIVERSE, "data_pipelines.universe"),
+        require(paths.UNIVERSE_HISTORY, "data_pipelines.cli universe --history"),
+        require(paths.UNIVERSE, "data_pipelines.cli universe"),
     ]
     frame = pl.scan_parquet(sources).sort("date", "ticker")
     return deliver(in_window(frame, start, end), lazy)

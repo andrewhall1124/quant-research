@@ -21,7 +21,7 @@ def load_earnings(
     report moves that day's close-to-close return, an after-the-close report
     moves the *next* one.
     """
-    frame = pl.scan_parquet(require(paths.EARNINGS, "data_pipelines.earnings")).sort(
+    frame = pl.scan_parquet(require(paths.EARNINGS, "data_pipelines.cli earnings")).sort(
         "symbol", "date"
     )
     return deliver(in_window(frame, start, end), lazy)

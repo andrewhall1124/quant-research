@@ -173,7 +173,7 @@ unadjusted spinoff. The symbol is right; the return on that one day is not.
 
 **A missing verdict does not empty your study.** `untrusted_symbol_years()`
 returns an empty set when `symbology_check.parquet` has never been built, on
-purpose. Run `data_pipelines.symbology` rather than trusting the silence.
+purpose. Run `data_pipelines.cli symbology` rather than trusting the silence.
 
 **A missing dataset tells you how to build it.** Every loader raises
 `MissingDataset` carrying the exact pipeline command, and the option loaders also

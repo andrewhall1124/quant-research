@@ -1,13 +1,12 @@
 """EOD option chains with greeks, IV and the underlying price, per symbol.
 
-Supersedes `options.py` for anything that needs more than trade and quote
-fields: `option_history_greeks_eod` returns the same OHLC and NBBO columns
-*plus* 1st-3rd order greeks, `implied_vol`, `iv_error` and — the part that
-removes a join and a symbology hop — `underlying_price` struck at the same
-instant as the option quote.
+`option_history_greeks_eod` returns OHLC and NBBO columns *plus* 1st-3rd order
+greeks, `implied_vol`, `iv_error` and — the part that removes a join and a
+symbology hop — `underlying_price` struck at the same instant as the option
+quote.
 
-Costs far more than `options.py` for the same coverage, because the server
-requires `expiration=*` to be requested a day at a time:
+Expensive, because the server requires `expiration=*` to be requested a day at
+a time:
 
     "When expiration=*, you must request data a day-at-a-time"
 
@@ -19,7 +18,7 @@ Resumable at symbol granularity: a symbol's file is written only once its whole
 window is fetched, and existing files are skipped, so an interrupted run loses
 at most one symbol (~80 s) and can just be re-run.
 
-    uv run python -m data_pipelines.option_greeks --start 2025-01-01 --end 2025-12-31
+    uv run python -m data_pipelines.cli option-greeks --year 2024
 """
 
 import argparse
@@ -31,8 +30,7 @@ import polars as pl
 from dotenv import load_dotenv
 
 from data_access_layer import paths
-from data_pipelines.common import fetch_many, load_universe_tickers, make_client
-from data_pipelines.universe import get_trading_calendar
+from data_pipelines.utils import fetch_many, make_client, trading_sessions, universe_symbols
 
 load_dotenv()
 
@@ -69,19 +67,19 @@ def fetch_symbol_greeks(
 def run(
     start_date: date,
     end_date: date,
-    universe_path: str,
     output_dir: str,
     workers: int,
     limit: int | None,
     symbols: list[str] | None = None,
-    universe_year: int | None = None,
 ) -> None:
     if symbols is None:
-        symbols = load_universe_tickers(universe_path, "option", limit, universe_year)
+        # The window picks the members: a backfill year pulls that year's
+        # constituents, not today's.
+        symbols = universe_symbols("option", start_date, end_date, limit)
     elif limit:
         symbols = symbols[:limit]
 
-    sessions = get_trading_calendar(start_date, end_date)
+    sessions = trading_sessions(start_date, end_date)
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
@@ -111,8 +109,7 @@ def run(
     )
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--start", type=date.fromisoformat, default=date(2025, 1, 1))
     parser.add_argument("--end", type=date.fromisoformat, default=date(2025, 12, 31))
     parser.add_argument(
@@ -124,15 +121,14 @@ if __name__ == "__main__":
             " year-stamped output directory in one flag"
         ),
     )
-    parser.add_argument("--universe", default=str(paths.UNIVERSE))
     parser.add_argument("--output-dir", default=str(paths.OPTION_GREEKS_DIR))
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--symbols", default=None, help="comma-separated roots")
-    args = parser.parse_args()
 
+
+def main(args: argparse.Namespace) -> None:
     start_date, end_date = args.start, args.end
-    universe_path = args.universe
     output_dir = args.output_dir
     if args.year is not None:
         start_date = date(args.year, 1, 1)
@@ -141,16 +137,10 @@ if __name__ == "__main__":
         # pulled into their own directory rather than the constituent one.
         if args.output_dir == str(paths.OPTION_GREEKS_DIR):
             output_dir = str(paths.option_dir("option_greeks", args.year))
-        if args.year != paths.SAMPLE_YEAR and args.universe == str(paths.UNIVERSE):
-            # A backfill year needs that year's members, not 2025's.
-            universe_path = str(paths.UNIVERSE_HISTORY)
 
     symbols = (
         [symbol.strip().upper() for symbol in args.symbols.split(",") if symbol.strip()]
         if args.symbols
         else None
     )
-    run(
-        start_date, end_date, universe_path, output_dir,
-        args.workers, args.limit, symbols, args.year,
-    )
+    run(start_date, end_date, output_dir, args.workers, args.limit, symbols)

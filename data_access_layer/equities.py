@@ -13,7 +13,7 @@ import polars as pl
 from data_access_layer import paths
 from data_access_layer.filters import deliver, in_window, require
 
-# Mirrors data_pipelines.common.TICKER_OVERRIDES["stock"]. Duplicated rather
+# Mirrors data_pipelines.utils.symbols.TICKER_OVERRIDES["stock"]. Duplicated rather
 # than imported so the access layer does not depend on the pipeline package.
 THETA_STOCK_OVERRIDES = {"BNY": "BK"}
 
@@ -41,10 +41,10 @@ def load_underlying(
     sources = [
         require(
             paths.UNDERLYING_HISTORY,
-            "data_pipelines.underlying --start 2023-06-01 --end 2024-05-30"
+            "data_pipelines.cli underlying --start 2023-06-01 --end 2024-05-30"
             " --output data_store/underlying_history.parquet",
         ),
-        require(paths.UNDERLYING, "data_pipelines.underlying"),
+        require(paths.UNDERLYING, "data_pipelines.cli underlying"),
     ]
     frame = (
         pl.scan_parquet(sources)
@@ -65,7 +65,7 @@ def load_corporate_actions(
     for the same reason.
     """
     frame = pl.scan_parquet(
-        require(paths.CORPORATE_ACTIONS, "data_pipelines.corporate_actions")
+        require(paths.CORPORATE_ACTIONS, "data_pipelines.cli corporate-actions")
     ).sort("symbol", "date")
     return deliver(in_window(frame, start, end), lazy)
 

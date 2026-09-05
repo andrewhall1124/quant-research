@@ -2,19 +2,20 @@
 
 All of this is EOD and available on the free tier, unlike the intraday
 endpoints. It is small enough to pull in one pass.
+
+    uv run python -m data_pipelines.cli reference
 """
 
 import argparse
 import time
 from datetime import date, timedelta
-from pathlib import Path
 
 import polars as pl
 import yfinance as yf
 from dotenv import load_dotenv
 
 from data_access_layer import paths
-from data_pipelines.common import make_client
+from data_pipelines.utils import date_chunks, make_client, write_atomic
 
 load_dotenv()
 
@@ -48,24 +49,9 @@ YIELD_HISTORY_START = date(2017, 1, 1)
 # connection), which is presumably why that file never had a pipeline.
 RATES = ["SOFR"]
 
-# ThetaData rejects any history request spanning more than 365 days, and the
-# free tier refuses index history starting before roughly 2024-01-01 (earlier
-# starts are quoted as VALUE / STANDARD / PROFESSIONAL by depth). Longer
-# windows are stitched from year-sized chunks.
-MAX_REQUEST_DAYS = 360
+# The free tier refuses index history starting before roughly 2024-01-01
+# (earlier starts are quoted as VALUE / STANDARD / PROFESSIONAL by depth).
 FREE_INDEX_HISTORY_START = date(2024, 1, 1)
-
-
-def date_chunks(
-    start_date: date, end_date: date, span_days: int = MAX_REQUEST_DAYS
-) -> list[tuple[date, date]]:
-    chunks = []
-    chunk_start = start_date
-    while chunk_start <= end_date:
-        chunk_end = min(chunk_start + timedelta(days=span_days), end_date)
-        chunks.append((chunk_start, chunk_end))
-        chunk_start = chunk_end + timedelta(days=1)
-    return chunks
 
 
 def fetch_indices(symbols: list[str], start_date: date, end_date: date) -> pl.DataFrame:
@@ -77,10 +63,10 @@ def fetch_indices(symbols: list[str], start_date: date, end_date: date) -> pl.Da
                 frames.append(
                     client.index_history_eod(symbol, chunk_start, chunk_end)
                     .select(
-                    pl.col("created").dt.date().alias("date"),
-                    pl.lit(symbol).alias("symbol"),
-                    pl.col("open"),
-                    pl.col("high"),
+                        pl.col("created").dt.date().alias("date"),
+                        pl.lit(symbol).alias("symbol"),
+                        pl.col("open"),
+                        pl.col("high"),
                         pl.col("low"),
                         pl.col("close"),
                     )
@@ -150,24 +136,21 @@ def fetch_rates(start_date: date, end_date: date) -> pl.DataFrame:
 def run(
     start_date: date,
     end_date: date,
-    output_dir: str,
     yield_start: date = YIELD_HISTORY_START,
-) -> None:
-    out = Path(output_dir)
-    out.mkdir(parents=True, exist_ok=True)
+) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     started = time.perf_counter()
 
     index_df = fetch_indices(INDICES + VOL_INDICES, start_date, end_date)
-    index_df.write_parquet(paths.INDICES)
+    write_atomic(index_df, paths.INDICES)
 
     # The curve runs from `yield_start`, not `start_date`: index levels are
     # capped at 2024 by the free tier but the yields are not, and every option
     # year needs a discount rate.
     yield_df = fetch_yields(yield_start, end_date)
-    yield_df.write_parquet(paths.YIELDS)
+    write_atomic(yield_df, paths.YIELDS)
 
     rate_df = fetch_rates(start_date, end_date)
-    rate_df.write_parquet(paths.RATES)
+    write_atomic(rate_df, paths.RATES)
 
     print(
         f"\ndone in {time.perf_counter() - started:.1f}s"
@@ -179,24 +162,21 @@ def run(
     return index_df, yield_df, rate_df
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--start", type=date.fromisoformat, default=FREE_INDEX_HISTORY_START
     )
     parser.add_argument("--end", type=date.fromisoformat, default=date(2025, 12, 31))
-    parser.add_argument("--output-dir", default=str(paths.DATA_STORE))
     parser.add_argument(
         "--yield-start",
         type=date.fromisoformat,
         default=YIELD_HISTORY_START,
         help="the curve reaches further back than the index levels the tier allows",
     )
-    args = parser.parse_args()
 
-    index_df, yield_df, rate_df = run(
-        args.start, args.end, args.output_dir, args.yield_start
-    )
+
+def main(args: argparse.Namespace) -> None:
+    index_df, yield_df, _ = run(args.start, args.end, args.yield_start)
 
     print("\nVIX term structure, most recent day:")
     latest = index_df.filter(pl.col("date") == index_df["date"].max())

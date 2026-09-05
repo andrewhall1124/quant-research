@@ -16,7 +16,7 @@ def load_indices(
     start: date | None = None, end: date | None = None, lazy: bool = False
 ) -> pl.LazyFrame | pl.DataFrame:
     """EOD index levels, long: SPX, RUT, OEX, XSP and the VIX complex."""
-    frame = pl.scan_parquet(require(paths.INDICES, "data_pipelines.reference")).sort(
+    frame = pl.scan_parquet(require(paths.INDICES, "data_pipelines.cli reference")).sort(
         "date", "symbol"
     )
     return deliver(in_window(frame, start, end), lazy)
@@ -26,7 +26,7 @@ def load_yields(
     start: date | None = None, end: date | None = None, lazy: bool = False
 ) -> pl.LazyFrame | pl.DataFrame:
     """CBOE treasury yield indices (13w, 5y, 10y, 30y) as decimal yields."""
-    frame = pl.scan_parquet(require(paths.YIELDS, "data_pipelines.reference")).sort(
+    frame = pl.scan_parquet(require(paths.YIELDS, "data_pipelines.cli reference")).sort(
         "date", "tenor"
     )
     return deliver(in_window(frame, start, end), lazy)
@@ -40,7 +40,7 @@ def load_rates(
     Tier-capped at 2024; see `load_yields` for a curve that reaches the whole
     option history.
     """
-    frame = pl.scan_parquet(require(paths.RATES, "data_pipelines.reference")).sort(
+    frame = pl.scan_parquet(require(paths.RATES, "data_pipelines.cli reference")).sort(
         "date", "symbol"
     )
     return deliver(in_window(frame, start, end), lazy)

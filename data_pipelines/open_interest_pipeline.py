@@ -6,19 +6,19 @@ Value/Standard/Pro. It is the liquidity screen an option strategy actually
 wants — volume says what traded today, open interest says how much position is
 standing there.
 
-Cheap, unlike `option_greeks.py`. That endpoint forces `expiration=*` to be
-requested a day at a time; this one accepts a whole date range in one request,
-so a symbol-year is a single call rather than ~250. A 500-name year runs in
-minutes, not hours.
+Cheap, unlike `option_greeks_pipeline.py`. That endpoint forces `expiration=*`
+to be requested a day at a time; this one accepts a whole date range in one
+request, so a symbol-year is a single call rather than ~250. A 500-name year
+runs in minutes, not hours.
 
 Still subject to the 365-day cap per request, so longer windows are stitched
-with `reference.date_chunks`.
+with `utils.date_chunks`.
 
 Resumable at symbol granularity: a symbol's file is written only once its whole
 window is fetched, and existing files are skipped, so an interrupted run can
 just be re-run.
 
-    uv run python -m data_pipelines.open_interest --start 2025-01-01 --end 2025-12-31
+    uv run python -m data_pipelines.cli open-interest --year 2024
 """
 
 import argparse
@@ -30,8 +30,7 @@ import polars as pl
 from dotenv import load_dotenv
 
 from data_access_layer import paths
-from data_pipelines.common import fetch_many, load_universe_tickers, make_client
-from data_pipelines.reference import date_chunks
+from data_pipelines.utils import date_chunks, fetch_many, make_client, universe_symbols
 
 load_dotenv()
 
@@ -104,15 +103,13 @@ def fetch_symbol_open_interest(
 def run(
     start_date: date,
     end_date: date,
-    universe_path: str,
     output_dir: str,
     workers: int,
     limit: int | None,
     symbols: list[str] | None = None,
-    universe_year: int | None = None,
 ) -> None:
     if symbols is None:
-        symbols = load_universe_tickers(universe_path, "option", limit, universe_year)
+        symbols = universe_symbols("option", start_date, end_date, limit)
     elif limit:
         symbols = symbols[:limit]
 
@@ -140,8 +137,7 @@ def run(
     )
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--start", type=date.fromisoformat, default=date(2025, 1, 1))
     parser.add_argument("--end", type=date.fromisoformat, default=date(2025, 12, 31))
     parser.add_argument(
@@ -153,32 +149,25 @@ def main() -> None:
             " year-stamped output directory in one flag"
         ),
     )
-    parser.add_argument("--universe", default=str(paths.UNIVERSE))
-    parser.add_argument("--output", default=str(paths.OPEN_INTEREST_DIR))
+    parser.add_argument("--output-dir", default=str(paths.OPEN_INTEREST_DIR))
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--limit", type=int, default=None)
-    parser.add_argument("--symbols", nargs="+", default=None)
-    args = parser.parse_args()
+    parser.add_argument("--symbols", default=None, help="comma-separated roots")
 
+
+def main(args: argparse.Namespace) -> None:
     start_date, end_date = args.start, args.end
-    universe_path = args.universe
-    output_dir = args.output
+    output_dir = args.output_dir
     if args.year is not None:
         start_date = date(args.year, 1, 1)
         end_date = date(args.year, 12, 31)
-        # An explicit --output-dir still wins: that is how index roots are
-        # pulled into their own directory rather than the constituent one.
-        if args.output == str(paths.OPEN_INTEREST_DIR):
+        # An explicit --output-dir still wins, as it does for the greeks pull.
+        if args.output_dir == str(paths.OPEN_INTEREST_DIR):
             output_dir = str(paths.option_dir("open_interest", args.year))
-        if args.year != paths.SAMPLE_YEAR and args.universe == str(paths.UNIVERSE):
-            # A backfill year needs that year's members, not 2025's.
-            universe_path = str(paths.UNIVERSE_HISTORY)
 
-    run(
-        start_date, end_date, universe_path, output_dir,
-        args.workers, args.limit, args.symbols, args.year,
+    symbols = (
+        [symbol.strip().upper() for symbol in args.symbols.split(",") if symbol.strip()]
+        if args.symbols
+        else None
     )
-
-
-if __name__ == "__main__":
-    main()
+    run(start_date, end_date, output_dir, args.workers, args.limit, symbols)

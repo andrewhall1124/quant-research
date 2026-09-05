@@ -103,7 +103,7 @@ def load_option_greeks(
     dataset = paths.option_dataset_name(index)
     sources = option_paths(
         symbol, dataset, start, end,
-        f"data_pipelines.option_greeks --symbols {symbol.upper()}"
+        f"data_pipelines.cli option-greeks --symbols {symbol.upper()}"
         + (f" --output-dir {paths.option_dir(dataset, paths.SAMPLE_YEAR)}" if index else ""),
     )
     frame = pl.scan_parquet(sources).with_columns(
@@ -130,7 +130,7 @@ def load_open_interest(
     """
     sources = option_paths(
         symbol, "open_interest", start, end,
-        f"data_pipelines.open_interest --symbols {symbol.upper()}",
+        f"data_pipelines.cli open-interest --symbols {symbol.upper()}",
     )
     frame = pl.scan_parquet(sources).with_columns(
         pl.col("timestamp").dt.date().alias("date"),

@@ -11,18 +11,19 @@ Yahoo carries about 100 announcements per name, which reaches back to roughly
 2002 — deeper than any option history ThetaData sells, so this never becomes
 the binding constraint.
 
-    uv run python -m data_pipelines.earnings
+    uv run python -m data_pipelines.cli earnings
 """
 
 import argparse
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date
 
 import polars as pl
 import yfinance as yf
 
 from data_access_layer import paths
-from data_pipelines.common import normalize_ticker
+from data_pipelines.utils import symbol_map, write_atomic
 
 # Yahoo stamps the announcement with its scheduled time, which is how the
 # session is recovered: 16:00 or later is after the close, anything before
@@ -66,18 +67,9 @@ def classify_session(frame: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def run(universe_path: str, limit: int, workers: int) -> None:
-    tickers = (
-        pl.read_parquet(universe_path)
-        .select("ticker")
-        .unique()
-        .sort("ticker")["ticker"]
-        .to_list()
-    )
-    pairs = [
-        (normalize_ticker(ticker, "stock"), normalize_ticker(ticker, "yahoo"))
-        for ticker in tickers
-    ]
+def run(limit: int, workers: int, universe_year: int = paths.SAMPLE_YEAR) -> None:
+    names = symbol_map(date(universe_year, 1, 1), date(universe_year, 12, 31))
+    pairs = list(zip(names["stock_symbol"].to_list(), names["yahoo_symbol"].to_list()))
     print(f"earnings: {len(pairs)} symbols, up to {limit} announcements each")
 
     started = time.perf_counter()
@@ -114,8 +106,7 @@ def run(universe_path: str, limit: int, workers: int) -> None:
         .unique(subset=["symbol", "date"])
         .sort("symbol", "date")
     )
-    paths.EARNINGS.parent.mkdir(parents=True, exist_ok=True)
-    earnings_df.write_parquet(paths.EARNINGS)
+    write_atomic(earnings_df, paths.EARNINGS)
 
     print(
         f"\ndone in {time.perf_counter() - started:.1f}s"
@@ -128,10 +119,11 @@ def run(universe_path: str, limit: int, workers: int) -> None:
         print(f"no earnings data for {len(missing)}: {sorted(missing)[:20]}")
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--universe", default=str(paths.UNIVERSE))
+def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--limit", type=int, default=100, help="announcements per symbol")
     parser.add_argument("--workers", type=int, default=4)
-    args = parser.parse_args()
-    run(args.universe, args.limit, args.workers)
+    parser.add_argument("--universe-year", type=int, default=paths.SAMPLE_YEAR)
+
+
+def main(args: argparse.Namespace) -> None:
+    run(args.limit, args.workers, args.universe_year)
