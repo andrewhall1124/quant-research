@@ -31,5 +31,5 @@ research/*/results/*.parquet
 
 # voltium rebuildable caches and demo run artefacts
 voltium/.cache/
-voltium/demos/records.parquet
-voltium/demos/portfolio.json
+voltium/demos/records_*.parquet
+voltium/demos/portfolio_*.json

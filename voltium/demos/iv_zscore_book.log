@@ -1,0 +1,7 @@
+13:32:57 level_book 533 symbols, history from 2023-10-23, forward to 2025-10-08
+13:32:57 level_book reference paths: 250403 rows (0s)
+13:32:57 voltium.loaders vega convention for /Users/andrew/Projects/quant-research/data_store/option_greeks_2023/A.parquet: per_1.00_iv (per-unit share 1.00, per-point share 0.00, median dP/vega ratio 0.0101, theta/day share 1.00)
+13:32:57 voltium.loaders vega convention for /Users/andrew/Projects/quant-research/data_store/index_greeks_2023/SPX.parquet: per_1.00_iv (per-unit share 1.00, per-point share 0.00, median dP/vega ratio 0.0101, theta/day share 1.00)
+13:32:57 level_book surface: 250255 rows (0s)
+13:32:57 level_book HAR: 256866 forecasts, last fit [{'date': datetime.date(2025, 10, 1), 'rows': 254694, 'const': -0.870249241039082, 'residual_var': 0.27997243607241123, 'b_rv_1': 0.1598099253128277, 'b_rv_5': 0.16263868384702326, 'b_rv_22': 0.9035994839514316}] (1s)
+13:32:58 voltium.loaders vega convention for /Users/andrew/Projects/quant-research/data_store/option_greeks/A.parquet: per_1.00_iv (per-unit share 1.00, per-point share 0.00, median dP/vega ratio 0.0101, theta/day share 1.00)

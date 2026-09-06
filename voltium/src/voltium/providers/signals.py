@@ -129,3 +129,44 @@ class CrossSectionalVRPSignal(SignalProvider, PanelProvider):
             self.frame_df.filter(pl.col("date") == date_), on=["date", "symbol"]
         )
         return {r: float(merged.select(pl.corr("residual", r)).item()) for r in self.regressors}
+
+
+@dataclass(frozen=True)
+class TimeSeriesZScoreConfig:
+    tenor: int = 60
+    window: int = 250
+    min_periods: int = 120
+    winsor: float = 3.0
+    use_log: bool = True
+
+
+class TimeSeriesIVZScoreSignal(SignalProvider, PanelProvider):
+    """Each name's IV against its own history: `(iv - mean) / std` over a trailing window.
+
+    No cross-sectional regression, no forecast: the score is purely how far
+    today's constant-maturity ATM IV (log IV by default) sits from its
+    trailing `window`-session mean, in trailing standard deviations. Positive
+    means rich relative to the name's own past, and `alphas.py` flips the
+    sign so the book sells it. It is the classic mean-reversion-in-IV
+    signal and a useful control for the residualised premium.
+    """
+
+    def __init__(self, surface_df: pl.DataFrame, config: TimeSeriesZScoreConfig = TimeSeriesZScoreConfig()) -> None:
+        self.config = config
+        iv_col = f"iv{config.tenor}"
+        level = pl.col(iv_col).log() if config.use_log else pl.col(iv_col)
+        panel_df = (
+            surface_df.select("date", "symbol", iv_col)
+            .filter(pl.col(iv_col) > 0)
+            .sort("symbol", "date")
+            .with_columns(level.alias("level"))
+            .with_columns(
+                pl.col("level").rolling_mean(config.window, min_samples=config.min_periods).over("symbol").alias("mean"),
+                pl.col("level").rolling_std(config.window, min_samples=config.min_periods).over("symbol").alias("std"),
+            )
+            .filter(pl.col("std") > 0)
+            .with_columns(((pl.col("level") - pl.col("mean")) / pl.col("std")).clip(-config.winsor, config.winsor).alias("signal"))
+            .select("date", "symbol", "signal")
+            .sort("date", "symbol")
+        )
+        PanelProvider.__init__(self, panel_df)

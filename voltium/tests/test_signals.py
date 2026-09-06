@@ -38,3 +38,19 @@ def test_residuals_are_uncorrelated_with_each_factor():
     assert out.height == n_names
     assert abs(out["signal"].mean()) < 1e-6
     assert abs(out["signal"].std() - 1.0) < 0.05
+
+
+def test_time_series_zscore_is_relative_to_each_names_own_history():
+    from voltium.providers.signals import TimeSeriesIVZScoreSignal, TimeSeriesZScoreConfig
+
+    dates = [dt.date(2024, 1, 1) + dt.timedelta(days=i) for i in range(60)]
+    rows = []
+    for i, d in enumerate(dates):
+        rows.append({"date": d, "symbol": "FLAT", "iv60": 0.30})
+        rows.append({"date": d, "symbol": "RISING", "iv60": 0.20 + 0.001 * i})
+    surface_df = pl.DataFrame(rows)
+    signal = TimeSeriesIVZScoreSignal(surface_df, TimeSeriesZScoreConfig(window=20, min_periods=10))
+    last = signal.get(dates[-1])
+    # a flat series has zero std and is dropped; a rising one is above its trailing mean
+    assert last.filter(pl.col("symbol") == "FLAT").is_empty()
+    assert last.filter(pl.col("symbol") == "RISING")["signal"][0] > 1.0
