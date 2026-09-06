@@ -13,8 +13,10 @@ bar for every expiration listed on each of them, and splices the columns
 in. Second- and third-order greeks on repaired rows are set to null rather
 than left at values computed from empty quotes. The original file is kept
 beside the repaired one as `<ROOT>.parquet.orig` the first time it is
-touched, and the run is resumable: a session that is already quoted is not
-requested again.
+touched, and the run is resumable at two levels: a session that is already
+quoted is not requested again, and bars fetched for a file still in
+progress are checkpointed to `<ROOT>.bars.cache` every few hundred
+requests, so an interrupted multi-hour file loses minutes, not hours.
 
     uv run python -m data_pipelines.cli index-repair --dry-run
     uv run python -m data_pipelines.cli index-repair --symbols SPX --years 2021
@@ -39,6 +41,7 @@ load_dotenv()
 
 INDEX_ROOTS = ["SPX", "SPXW", "XSP", "VIX"]
 BAR_START, BAR_END = "15:59:00", "16:00:00"
+CHECKPOINT_EVERY = 200
 
 # Columns the 15:59 first-order bar can replace, and the ones it cannot,
 # which were computed from the empty quotes and are nulled instead.
@@ -98,12 +101,21 @@ def repair_file(root: str, path: Path, threshold: float, workers: int, dry_run: 
         return
 
     started = time.perf_counter()
-    bars = fetch_many(
-        [(row["date"], row["expiration"]) for row in tasks.iter_rows(named=True)],
-        lambda task: fetch_bar(root, task[0], task[1]),
-        workers,
-    )
-    bars = [bar for bar in bars if not bar.is_empty()]
+    cache = path.with_suffix(".bars.cache")
+    cached = pl.read_parquet(cache) if cache.exists() else None
+    if cached is not None and not cached.is_empty():
+        done = cached.select(pl.col("timestamp").dt.date().alias("date"), "expiration").unique()
+        tasks = tasks.join(done, on=["date", "expiration"], how="anti")
+        print(f"  resuming: {done.height} requests already cached, {tasks.height} to go", flush=True)
+    task_list = [(row["date"], row["expiration"]) for row in tasks.iter_rows(named=True)]
+    pieces = [cached] if cached is not None else []
+    for start in range(0, len(task_list), CHECKPOINT_EVERY):
+        chunk = task_list[start:start + CHECKPOINT_EVERY]
+        fetched = [bar for bar in fetch_many(chunk, lambda task: fetch_bar(root, task[0], task[1]), workers) if not bar.is_empty()]
+        if fetched:
+            pieces.append(pl.concat(fetched, how="vertical_relaxed"))
+            write_atomic(pl.concat([piece for piece in pieces if piece is not None], how="vertical_relaxed"), cache)
+    bars = [piece for piece in pieces if piece is not None and not piece.is_empty()]
     if not bars:
         print(f"\n{path.name}: nothing returned")
         return
@@ -128,7 +140,7 @@ def repair_file(root: str, path: Path, threshold: float, workers: int, dry_run: 
     if not backup.exists():
         shutil.copy2(path, backup)
     write_atomic(repaired, path)
-    rows = int(repaired.join(patch_df.select("date", "expiration", "strike", "right"), on=["date", "expiration", "strike", "right"], how="semi").height) if "date" in repaired.columns else patch_df.height
+    cache.unlink(missing_ok=True)
     print(f"\n{path.name}: {patch_df.height:,} contract-days repaired on {patch_df['date'].n_unique()} sessions"
           f" in {(time.perf_counter() - started) / 60:.1f} min; original kept as {backup.name}", flush=True)
 
