@@ -30,6 +30,7 @@ from data_pipelines import (
     open_interest_pipeline,
     option_greeks_pipeline,
     reference_pipeline,
+    sectors_pipeline,
     symbology_pipeline,
     underlying_pipeline,
     universe_pipeline,
@@ -39,6 +40,7 @@ from data_pipelines import (
 # appear in `--help`, which is roughly dependency order.
 PIPELINES = {
     "universe": universe_pipeline,
+    "sectors": sectors_pipeline,
     "reference": reference_pipeline,
     "corporate-actions": corporate_actions_pipeline,
     "earnings": earnings_pipeline,
@@ -85,6 +87,7 @@ def build_plan() -> list[tuple[str, list[str]]]:
     # Reference first: the universe is what every per-symbol pull iterates.
     steps.append(("universe (2025)", ["universe"]))
     steps.append(("universe history (2016-2024)", ["universe", "--history"]))
+    steps.append(("sectors (GICS, current members)", ["sectors"]))
     steps.append(("indices, VIX complex, yield curve", ["reference"]))
     steps.append((
         "corporate actions + splits",

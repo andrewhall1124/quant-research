@@ -74,7 +74,7 @@ from data_access_layer.quality import (
 )
 from data_access_layer.reference import load_indices, load_rates, load_yields
 from data_access_layer.transforms import realized_volatility, split_adjusted_return
-from data_access_layer.universe import filter_to_universe, load_universe
+from data_access_layer.universe import filter_to_universe, load_sectors, load_universe
 
 __all__ = [
     # paths
@@ -100,6 +100,7 @@ __all__ = [
     "load_open_interest",
     "load_option_greeks",
     "load_rates",
+    "load_sectors",
     "load_symbology_check",
     "load_underlying",
     "load_universe",

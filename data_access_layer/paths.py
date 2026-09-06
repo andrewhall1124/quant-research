@@ -39,6 +39,10 @@ EARNINGS = DATA_STORE / "earnings.parquet"
 # the file it has always been.
 UNIVERSE_HISTORY = DATA_STORE / "universe_history.parquet"
 
+# GICS sector per current constituent, a static snapshot from Wikipedia. See
+# data_pipelines/sectors_pipeline.py.
+SECTORS = DATA_STORE / "sectors.parquet"
+
 # One parquet per symbol; too large to keep in a single file.
 OPEN_INTEREST_DIR = DATA_STORE / "open_interest"
 OPTION_GREEKS_DIR = DATA_STORE / "option_greeks"
@@ -98,6 +102,7 @@ DATASETS = {
     "corporate_actions": CORPORATE_ACTIONS,
     "symbology_check": SYMBOLOGY_CHECK,
     "earnings": EARNINGS,
+    "sectors": SECTORS,
     "open_interest": OPEN_INTEREST_DIR,
     "option_greeks": OPTION_GREEKS_DIR,
 }

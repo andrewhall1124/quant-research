@@ -49,3 +49,15 @@ def filter_to_universe(prices):
     )
     joined = prices.lazy().join(members, on=["date", "symbol"], how="semi")
     return joined if lazy else joined.collect()
+
+
+def load_sectors(lazy: bool = False) -> pl.LazyFrame | pl.DataFrame:
+    """GICS sector and sub-industry per current constituent, one row per ticker.
+
+    No window, because it is not dated: Wikipedia publishes the classification
+    of today's members only. `symbol` is the ThetaData option spelling
+    (BRK.B -> BRKB), `ticker` the Wikipedia one. A name that left the index is
+    absent, and a name that changed sector carries its current one.
+    """
+    frame = pl.scan_parquet(require(paths.SECTORS, "data_pipelines.cli sectors"))
+    return deliver(frame, lazy)
