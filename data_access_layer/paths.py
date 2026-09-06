@@ -43,6 +43,14 @@ UNIVERSE_HISTORY = DATA_STORE / "universe_history.parquet"
 # data_pipelines/sectors_pipeline.py.
 SECTORS = DATA_STORE / "sectors.parquet"
 
+# The volatility risk model, estimated by voltium and stored here so research
+# code reads it like any other table. See data_pipelines/vol_risk_model_pipeline.py.
+VOL_REFERENCE_RETURNS_DIR = DATA_STORE / "vol_reference_returns"
+VOL_FACTOR_RETURNS = DATA_STORE / "vol_factor_returns.parquet"
+VOL_FACTOR_LOADINGS = DATA_STORE / "vol_factor_loadings.parquet"
+VOL_FACTOR_COVARIANCES = DATA_STORE / "vol_factor_covariances.parquet"
+VOL_IDIO_VOL = DATA_STORE / "vol_idio_vol.parquet"
+
 # One parquet per symbol; too large to keep in a single file.
 OPEN_INTEREST_DIR = DATA_STORE / "open_interest"
 OPTION_GREEKS_DIR = DATA_STORE / "option_greeks"
@@ -103,6 +111,11 @@ DATASETS = {
     "symbology_check": SYMBOLOGY_CHECK,
     "earnings": EARNINGS,
     "sectors": SECTORS,
+    "vol_reference_returns": VOL_REFERENCE_RETURNS_DIR,
+    "vol_factor_returns": VOL_FACTOR_RETURNS,
+    "vol_factor_loadings": VOL_FACTOR_LOADINGS,
+    "vol_factor_covariances": VOL_FACTOR_COVARIANCES,
+    "vol_idio_vol": VOL_IDIO_VOL,
     "open_interest": OPEN_INTEREST_DIR,
     "option_greeks": OPTION_GREEKS_DIR,
 }

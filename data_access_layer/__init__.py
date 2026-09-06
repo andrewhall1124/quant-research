@@ -32,6 +32,7 @@ The modules, in dependency order:
 * `events`     — earnings dates, and distance to them
 * `reference`  — index levels, yields, rates
 * `options`    — per-symbol chains: greeks and open interest
+* `risk`       — the volatility risk model voltium estimates: reference returns, factors, loadings
 * `transforms` — returns and realized vol, computed one agreed way
 
 Import a name from here, not from the submodule: the split is an implementation
@@ -73,6 +74,13 @@ from data_access_layer.quality import (
     usable_symbol_years,
 )
 from data_access_layer.reference import load_indices, load_rates, load_yields
+from data_access_layer.risk import (
+    load_vol_factor_covariances,
+    load_vol_factor_loadings,
+    load_vol_factor_returns,
+    load_vol_idio_vol,
+    load_vol_reference_returns,
+)
 from data_access_layer.transforms import realized_volatility, split_adjusted_return
 from data_access_layer.universe import filter_to_universe, load_sectors, load_universe
 
@@ -104,6 +112,11 @@ __all__ = [
     "load_symbology_check",
     "load_underlying",
     "load_universe",
+    "load_vol_factor_covariances",
+    "load_vol_factor_loadings",
+    "load_vol_factor_returns",
+    "load_vol_idio_vol",
+    "load_vol_reference_returns",
     "load_yields",
     "spot_series",
     # panel transforms

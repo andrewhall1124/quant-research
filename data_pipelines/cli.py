@@ -34,6 +34,7 @@ from data_pipelines import (
     symbology_pipeline,
     underlying_pipeline,
     universe_pipeline,
+    vol_risk_model_pipeline,
 )
 
 # Subcommand name -> the module that implements it. The order is the order they
@@ -49,6 +50,7 @@ PIPELINES = {
     "open-interest": open_interest_pipeline,
     "index-repair": index_repair_pipeline,
     "symbology": symbology_pipeline,
+    "vol-risk-model": vol_risk_model_pipeline,
 }
 
 # The option store spans these years. 2016 is deliberately absent: ThetaData's
@@ -132,6 +134,9 @@ def build_plan() -> list[tuple[str, list[str]]]:
         "symbology check (all years)",
         ["symbology", "--years", *[str(y) for y in OPTION_YEARS]],
     ))
+
+    # Derived from the chains: the volatility risk model voltium trades on.
+    steps.append(("vol risk model (all years)", ["vol-risk-model"]))
     return steps
 
 

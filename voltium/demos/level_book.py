@@ -2,9 +2,15 @@
 
     uv run python voltium/demos/level_book.py [--start 2025-01-02 --end 2025-06-30]
 
-Builds every panel from the store (cached under `voltium/.cache/`), runs the
+Reads the risk model and the reference straddle returns from the store
+(`data_pipelines.cli vol-risk-model`), builds the surface, forecast and
+signal panels (surface cached under `voltium/.cache/`), runs the
 weekly-rebalanced book, and prints `summary()`, the factor regression and
 the decile table. Figures land in `voltium/demos/figures/`.
+
+`--in-process` estimates the risk model on the fly from reference paths it
+builds itself instead of reading the stored tables; that is the path for an
+instrument that has not been pipelined.
 
 The dates default to the first half of 2025 because that is where every
 input exists at once: the stock tier (and so realized vol) starts mid-2023,
@@ -48,12 +54,13 @@ from voltium.providers.realized_vol import (
 )
 from voltium.providers.signals import CrossSectionalVRPSignal, SignalConfig
 from voltium.providers.stock_features import StockFeaturesProvider, load_spx_closes
-from voltium.providers.straddle_returns import StraddleReturnsProvider
+from voltium.providers.straddle_returns import StoredStraddleReturns, StraddleReturnsProvider
 from voltium.providers.surface import SurfaceConfig, build_surface_panel
 from voltium.providers.universe import PointInTimeUniverse, StaticSectorProvider
 from voltium.results import BacktestResults
 from voltium.risk_model.constructor import FactorRiskModelConstructor
 from voltium.risk_model.spec import FactorSpec
+from voltium.risk_model.store import StoredFactorRiskModelConstructor
 from voltium.trade_generator import TradeGenerator, TradeGeneratorConfig
 from voltium.loaders import scan_options, scan_stocks
 
@@ -95,6 +102,7 @@ def main() -> None:
     parser.add_argument("--rebalance", default="weekly", choices=["daily", "weekly"])
     parser.add_argument("--refresh", action="store_true", help="rebuild cached panels")
     parser.add_argument("--limit", type=int, default=None, help="use only the first N symbols (smoke test)")
+    parser.add_argument("--in-process", action="store_true", help="estimate the risk model here instead of reading the store")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s", datefmt="%H:%M:%S")
     pl.Config.set_tbl_rows(30)
@@ -118,12 +126,16 @@ def main() -> None:
 
     # --- panels -----------------------------------------------------------
     instrument = DeltaHedgedStraddle(StraddleConfig(target_dte=60, roll_dte=20))
-    reference = StraddleReturnsProvider.from_store(
-        paths, symbols, instrument, calendar, history_start, forward_end, cache_dir=CACHE_DIR / "reference", refresh=args.refresh
-    )
-    spx_reference = StraddleReturnsProvider.from_store(
-        paths, ["SPX"], instrument, calendar, history_start, forward_end, index=True, cache_dir=CACHE_DIR / "reference", refresh=args.refresh
-    )
+    if args.in_process:
+        reference = StraddleReturnsProvider.from_store(
+            paths, symbols, instrument, calendar, history_start, forward_end, cache_dir=CACHE_DIR / "reference", refresh=args.refresh
+        )
+        spx_reference = StraddleReturnsProvider.from_store(
+            paths, ["SPX"], instrument, calendar, history_start, forward_end, index=True, cache_dir=CACHE_DIR / "reference", refresh=args.refresh
+        )
+    else:
+        reference = StoredStraddleReturns(paths, symbols, history_start, forward_end)
+        spx_reference = StoredStraddleReturns(paths, ["SPX"], history_start, forward_end)
     log.info("reference paths: %d rows (%.0fs)", reference.panel_df.height, time.time() - started)
 
     surface_df = materialize(
@@ -160,9 +172,12 @@ def main() -> None:
     signal = CrossSectionalVRPSignal(surface_df, forecast_df, features.panel_df, sectors_df, spec, SignalConfig(), spx_vrp_df)
     log.info("signal: %d rows, spx factor used: %s (%.0fs)", signal.panel_df.height, signal.used_spx, time.time() - started)
 
-    risk_model_constructor = FactorRiskModelConstructor(
-        reference.panel_df, sectors_df, spec, spx_reference.panel_df.select("date", "pnl_per_vega")
-    )
+    if args.in_process:
+        risk_model_constructor = FactorRiskModelConstructor(
+            reference.panel_df, sectors_df, spec, spx_reference.panel_df.select("date", "pnl_per_vega")
+        )
+    else:
+        risk_model_constructor = StoredFactorRiskModelConstructor(paths, history_start, args.end)
     alphas = ICScaledAlpha(signal, risk_model_constructor, AlphaConfig(ic=0.04))
 
     # --- book ---------------------------------------------------------------

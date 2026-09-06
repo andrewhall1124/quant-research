@@ -12,9 +12,10 @@ This is v1: daily data only, no earnings adjustment, no skew or term books.
 The extension points for those are listed at the end.
 
 ```sh
-uv sync                                  # from the repo root; voltium is a workspace member
-uv run pytest voltium/tests              # 19 tests, ~2s, no data needed for most
-uv run python voltium/demos/level_book.py    # six months of 2025, ~15 min cold, ~5 min cached
+uv sync                                          # from the repo root; voltium is a workspace member
+uv run pytest voltium/tests                      # ~2s, no data needed for most
+uv run python -m data_pipelines.cli vol-risk-model   # once: reference returns + risk model into data_store/ (~25 min)
+uv run python voltium/demos/level_book.py        # six months of 2025, ~10 min
 ```
 
 `pip install -e voltium` also works outside uv.
@@ -85,7 +86,7 @@ providers/
                            EarningsAdjuster hook (NoOpEarningsAdjuster) sits before interpolation
   realized_vol.py          Yang-Zhang RV panel; HARForecaster (expanding, refit monthly)
   stock_features.py        beta, idio vol, log_size (proxy), gap_freq from stock returns
-  straddle_returns.py      per-unit-vega reference P&L, produced by running the backtester
+  straddle_returns.py      per-unit-vega reference P&L, produced by running the backtester; StoredStraddleReturns
   chain.py                 per-date option cross-section (one lazy scan per session)
   signals.py               CrossSectionalVRPSignal: residualised, smoothed, z-scored
   alphas.py                ICScaledAlpha: alpha = -IC · sigma_idio · z
@@ -95,7 +96,8 @@ instruments/
 risk_model/
   spec.py                  FactorSpec — the one factor definition (market + GICS sectors)
   factor.py                FactorRiskModel, Ledoit-Wolf, factor construction
-  constructor.py           FactorRiskModelConstructor.get_risk_model(date)
+  constructor.py           FactorRiskModelConstructor.get_risk_model(date), estimated in process
+  store.py                 StoredFactorRiskModelConstructor + loadings/covariance/idio providers over data_store/
 optimizer/
   base.py                  Optimizer / Objective / OptimizerConstraint ABCs, OptimizationError
   objectives.py            MaxUtility, TurnoverPenalty, JumpPenalty
@@ -149,11 +151,24 @@ continuous one.
 The risk model needs a daily "return" per name. It is the P&L of holding one
 long unit of the instrument, delta-hedged and rolled exactly as the book does,
 divided by the unit's dollar vega at inception — built by running the
-`Backtester` itself with `ReferenceUnitStrategy` on each symbol
-(`StraddleReturnsProvider`). Factors: the SPX reference straddle (or the
-vega-weighted universe mean) and one factor per GICS sector, orthogonalised
-to the market. Loadings from a rolling 250-session regression, idio vol from
-the residual, factor covariance Ledoit-Wolf shrunk.
+`Backtester` itself with `ReferenceUnitStrategy` on each symbol. Factors: the
+SPX reference straddle (or the vega-weighted universe mean) and one factor
+per GICS sector, orthogonalised to the market with a trailing beta. Loadings
+from a rolling 250-session regression, idio vol from the residual, factor
+covariance Ledoit-Wolf shrunk.
+
+As in atium, the estimation is a pipeline and the backtest reads its output.
+`data_pipelines.cli vol-risk-model` writes `vol_reference_returns/<SYMBOL>.parquet`,
+`vol_factor_returns`, `vol_factor_loadings`, `vol_factor_covariances` and
+`vol_idio_vol` to `data_store/` for 2017–2025 (all point-in-time; the
+reference step is resumable per symbol). `risk_model/store.py` provides
+`FactorLoadingsProvider`, `FactorCovariancesProvider`, `IdioVolProvider` and
+`StoredFactorRiskModelConstructor` over those tables, and
+`StoredStraddleReturns` over the reference files; `data_access_layer` exposes
+the same tables as `load_vol_*`. The in-process
+`FactorRiskModelConstructor` and `StraddleReturnsProvider.from_store` remain
+for tests and for an instrument that has not been pipelined
+(`demos/level_book.py --in-process`).
 
 `FactorSpec` is shared with the signal, which residualises the variance
 premium against the same market and sector factors. `tests/test_signals.py`

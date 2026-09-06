@@ -51,12 +51,19 @@ def build_factor_returns(
     sectors_df: pl.DataFrame,
     spec: FactorSpec,
     market_df: pl.DataFrame | None = None,
+    rolling_window: int | None = None,
 ) -> pl.DataFrame:
     """`(date, factor, ret)` long frame.
 
     `returns_df` is `(date, symbol, pnl_per_vega, dollar_vega)`;
     `sectors_df` is `(symbol, sector)`; `market_df`, if given, is
     `(date, pnl_per_vega)` for the SPX reference straddle.
+
+    Sector factors are orthogonalised to the market with a beta estimated
+    over the whole frame when `rolling_window` is None (the in-process
+    constructor already hands in one estimation window), or with a trailing
+    `rolling_window`-session beta when set (the pipeline, which builds one
+    point-in-time series for the full history).
     """
     clean = returns_df.filter(pl.col("pnl_per_vega").is_not_null(), pl.col("dollar_vega") > 0)
     if spec.market_source == "spx" and market_df is not None:
@@ -77,17 +84,28 @@ def build_factor_returns(
             .agg(((pl.col("pnl_per_vega") * pl.col("dollar_vega")).sum() / pl.col("dollar_vega").sum()).alias("raw"))
             .join(market.select("date", pl.col("ret").alias("market")), on="date", how="inner")
         )
-        # orthogonalise each sector to the market over the sample
-        sector = (
-            raw.with_columns(
+        if rolling_window is None:
+            raw = raw.with_columns(
                 (pl.cov("raw", "market") / pl.col("market").var()).over("sector").alias("beta"),
                 pl.col("raw").mean().over("sector").alias("raw_mean"),
                 pl.col("market").mean().over("sector").alias("market_mean"),
             )
+        else:
+            raw = raw.sort("sector", "date").with_columns(
+                (
+                    pl.rolling_cov("raw", "market", window_size=rolling_window, min_samples=spec.min_observations)
+                    / pl.col("market").rolling_var(rolling_window, min_samples=spec.min_observations)
+                ).over("sector").alias("beta"),
+                pl.col("raw").rolling_mean(rolling_window, min_samples=spec.min_observations).over("sector").alias("raw_mean"),
+                pl.col("market").rolling_mean(rolling_window, min_samples=spec.min_observations).over("sector").alias("market_mean"),
+            )
+        sector = (
+            raw
             .with_columns(
                 (pl.col("raw") - pl.col("raw_mean") - pl.col("beta") * (pl.col("market") - pl.col("market_mean"))).alias("ret")
             )
             .select("date", pl.col("sector").alias("factor"), "ret")
+            .drop_nulls("ret")
         )
         pieces.append(sector)
     return pl.concat(pieces).sort("date", "factor")
@@ -189,3 +207,77 @@ def estimate_factor_risk_model(
     loadings_df = pl.DataFrame(loading_rows, schema={"symbol": pl.Utf8, "factor": pl.Utf8, "loading": pl.Float64})
     idio_df = pl.DataFrame(idio_rows, schema={"symbol": pl.Utf8, "idio_vol": pl.Float64})
     return FactorRiskModel(loadings_df, factor_cov, factor_names, idio_df)
+
+
+def regress_name(y: np.ndarray, x: np.ndarray) -> tuple[np.ndarray, float]:
+    """OLS with intercept; returns the slope coefficients and the residual std."""
+    design = np.column_stack([np.ones(len(y)), x])
+    beta, *_ = np.linalg.lstsq(design, y, rcond=None)
+    residual = y - design @ beta
+    return beta[1:], float(np.std(residual, ddof=design.shape[1]))
+
+
+def estimate_rolling_loadings(
+    returns_df: pl.DataFrame,
+    factor_returns_df: pl.DataFrame,
+    sectors_df: pl.DataFrame,
+    spec: FactorSpec,
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Loadings and idio vol at every session, from a trailing `spec.window`.
+
+    Returns `(date, symbol, factor, loading)` and `(date, symbol, idio_vol)`.
+    A name gets an estimate on a session once it has `spec.min_observations`
+    prior rows; the window is expanding until it reaches `spec.window`.
+    This is what the pipeline writes to the store; the in-process constructor
+    calls `estimate_factor_risk_model` for one date instead.
+    """
+    factors_wide = factor_returns_df.pivot(index="date", on="factor", values="ret").sort("date")
+    panel = (
+        returns_df.filter(pl.col("pnl_per_vega").is_not_null())
+        .join(sectors_df, on="symbol", how="left")
+        .join(factors_wide, on="date", how="inner")
+        .sort("symbol", "date")
+    )
+    loading_rows: list[tuple] = []
+    idio_rows: list[tuple] = []
+    for (symbol,), group in panel.group_by("symbol", maintain_order=True):
+        sector = group["sector"][0]
+        columns = [MARKET]
+        if spec.use_sectors and sector is not None and sector in factors_wide.columns:
+            columns.append(sector)
+        clean = group.drop_nulls(columns)
+        if clean.height < spec.min_observations:
+            continue
+        dates = clean["date"].to_list()
+        y = clean["pnl_per_vega"].to_numpy()
+        x = clean.select(columns).to_numpy()
+        for end in range(spec.min_observations, clean.height + 1):
+            start = max(0, end - spec.window)
+            beta, idio = regress_name(y[start:end], x[start:end])
+            day = dates[end - 1]
+            loading_rows.extend((day, symbol, name, float(b)) for name, b in zip(columns, beta))
+            idio_rows.append((day, symbol, idio))
+    loadings_df = pl.DataFrame(
+        loading_rows, schema={"date": pl.Date, "symbol": pl.Utf8, "factor": pl.Utf8, "loading": pl.Float64}, orient="row"
+    )
+    idio_df = pl.DataFrame(idio_rows, schema={"date": pl.Date, "symbol": pl.Utf8, "idio_vol": pl.Float64}, orient="row")
+    return loadings_df.sort("date", "symbol", "factor"), idio_df.sort("date", "symbol")
+
+
+def estimate_rolling_factor_covariances(factor_returns_df: pl.DataFrame, spec: FactorSpec) -> pl.DataFrame:
+    """Shrunk factor covariance at every session: `(date, factor_1, factor_2, covariance)`."""
+    factors_wide = factor_returns_df.pivot(index="date", on="factor", values="ret").sort("date")
+    names = spec.factor_names([f for f in factors_wide.columns if f not in ("date", MARKET)])
+    matrix = factors_wide.select(names).fill_null(0.0).to_numpy()
+    dates = factors_wide["date"].to_list()
+    rows: list[tuple] = []
+    for end in range(spec.min_observations, len(dates) + 1):
+        start = max(0, end - spec.window)
+        window = matrix[start:end]
+        sample = np.atleast_2d(np.cov(window, rowvar=False, ddof=1))
+        cov = ledoit_wolf(sample, window.shape[0]) if spec.shrinkage == "ledoit_wolf" else sample
+        day = dates[end - 1]
+        rows.extend((day, a, b, float(cov[i, j])) for i, a in enumerate(names) for j, b in enumerate(names))
+    return pl.DataFrame(
+        rows, schema={"date": pl.Date, "factor_1": pl.Utf8, "factor_2": pl.Utf8, "covariance": pl.Float64}, orient="row"
+    )

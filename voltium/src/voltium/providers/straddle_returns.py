@@ -42,7 +42,7 @@ import polars as pl
 from voltium.backtester import BacktestConfig, Backtester
 from voltium.costs import HalfSpreadCost, PerShareCost
 from voltium.instruments.base import Instrument
-from voltium.loaders import DataPaths, scan_options
+from voltium.loaders import DataPaths, scan_options, scan_reference_returns
 from voltium.providers.base import PanelProvider
 from voltium.providers.calendar import TradingCalendar
 from voltium.providers.chain import ChainBand, ChainProvider
@@ -178,3 +178,17 @@ class StraddleReturnsProvider(PanelProvider):
                 log.info("reference paths: %d/%d symbols", count, len(symbols))
         panel_df = pl.concat(pieces) if pieces else pl.DataFrame(schema=REFERENCE_SCHEMA)
         return cls(panel_df.sort("date", "symbol"))
+
+
+class StoredStraddleReturns(PanelProvider):
+    """The same panel, read from `data_store/vol_reference_returns/`.
+
+    Written by `data_pipelines.cli vol-risk-model`, which runs
+    `compute_reference_path` over the whole chain history once. Prefer this
+    over `StraddleReturnsProvider.from_store` in research code; the latter
+    is for a custom instrument that has not been pipelined yet.
+    """
+
+    def __init__(self, paths: DataPaths, symbols: list[str] | None, start: dt.date | None, end: dt.date | None) -> None:
+        panel_df = scan_reference_returns(paths, symbols, start, end).collect().sort("date", "symbol")
+        PanelProvider.__init__(self, panel_df)

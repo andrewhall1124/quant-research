@@ -181,6 +181,27 @@ class DataPaths:
     def earnings_file(self) -> Path:
         return self.root / "earnings.parquet"
 
+    # Tables written by `data_pipelines.cli vol-risk-model`.
+    @property
+    def reference_returns_dir(self) -> Path:
+        return self.root / "vol_reference_returns"
+
+    @property
+    def factor_returns_file(self) -> Path:
+        return self.root / "vol_factor_returns.parquet"
+
+    @property
+    def factor_loadings_file(self) -> Path:
+        return self.root / "vol_factor_loadings.parquet"
+
+    @property
+    def factor_covariances_file(self) -> Path:
+        return self.root / "vol_factor_covariances.parquet"
+
+    @property
+    def idio_vol_file(self) -> Path:
+        return self.root / "vol_idio_vol.parquet"
+
 
 def resolve_years(
     paths: DataPaths, dataset: str, start: dt.date | None, end: dt.date | None
@@ -502,3 +523,51 @@ def run_vega_check(sample_file: Path, rate: float = 0.04, rows: int = 400) -> Ve
         median_ratio=median_ratio,
         theta_per_day_share=theta_per_day_share,
     )
+
+
+# --------------------------------------------------------------------------
+# Risk model tables (written by data_pipelines.cli vol-risk-model)
+# --------------------------------------------------------------------------
+
+
+def require_table(path: Path) -> Path:
+    if not path.exists():
+        raise FileNotFoundError(f"{path} not found. Create it with:\n  uv run python -m data_pipelines.cli vol-risk-model")
+    return path
+
+
+def scan_reference_returns(
+    paths: DataPaths,
+    symbols: list[str] | None = None,
+    start: dt.date | None = None,
+    end: dt.date | None = None,
+) -> pl.LazyFrame:
+    """Per-unit-vega reference straddle P&L, one file per symbol (SPX included)."""
+    directory = require_table(paths.reference_returns_dir)
+    if symbols is None:
+        files = sorted(directory.glob("*.parquet"))
+    else:
+        files = [directory / f"{s}.parquet" for s in symbols if (directory / f"{s}.parquet").exists()]
+    if not files:
+        raise FileNotFoundError(f"no reference returns for {symbols} in {directory}")
+    return apply_window(pl.scan_parquet(files), start, end)
+
+
+def scan_factor_returns(paths: DataPaths, start: dt.date | None = None, end: dt.date | None = None) -> pl.LazyFrame:
+    """`(date, factor, ret)`."""
+    return apply_window(pl.scan_parquet(require_table(paths.factor_returns_file)), start, end)
+
+
+def scan_factor_loadings(paths: DataPaths, start: dt.date | None = None, end: dt.date | None = None) -> pl.LazyFrame:
+    """`(date, symbol, factor, loading)`."""
+    return apply_window(pl.scan_parquet(require_table(paths.factor_loadings_file)), start, end)
+
+
+def scan_factor_covariances(paths: DataPaths, start: dt.date | None = None, end: dt.date | None = None) -> pl.LazyFrame:
+    """`(date, factor_1, factor_2, covariance)`."""
+    return apply_window(pl.scan_parquet(require_table(paths.factor_covariances_file)), start, end)
+
+
+def scan_idio_vol(paths: DataPaths, start: dt.date | None = None, end: dt.date | None = None) -> pl.LazyFrame:
+    """`(date, symbol, idio_vol)`."""
+    return apply_window(pl.scan_parquet(require_table(paths.idio_vol_file)), start, end)

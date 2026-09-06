@@ -67,3 +67,33 @@ def test_sector_factors_are_orthogonal_to_market():
     for sector in ("Tech", "Energy"):
         corr = wide.select(pl.corr("market", sector)).item()
         assert abs(corr) < 1e-8
+
+
+def test_rolling_estimates_match_the_one_date_fit_and_round_trip_the_store(tmp_path):
+    from voltium.loaders import DataPaths
+    from voltium.risk_model.factor import estimate_rolling_factor_covariances, estimate_rolling_loadings
+    from voltium.risk_model.store import StoredFactorRiskModelConstructor
+
+    returns_df, market_df, sectors_df, *_ = simulate_panel(n_days=300)
+    spec = FactorSpec(window=250, min_observations=100)
+    factors_df = build_factor_returns(returns_df, sectors_df, spec, market_df, rolling_window=spec.window)
+    loadings_df, idio_df = estimate_rolling_loadings(returns_df, factors_df, sectors_df, spec)
+    cov_df = estimate_rolling_factor_covariances(factors_df, spec)
+    last = returns_df["date"].max()
+
+    # write the four tables the pipeline would, and read them back through the store
+    root = tmp_path / "data_store"
+    root.mkdir()
+    factors_df.write_parquet(root / "vol_factor_returns.parquet")
+    loadings_df.write_parquet(root / "vol_factor_loadings.parquet")
+    cov_df.write_parquet(root / "vol_factor_covariances.parquet")
+    idio_df.write_parquet(root / "vol_idio_vol.parquet")
+    stored = StoredFactorRiskModelConstructor(DataPaths(root=root)).get_risk_model(last)
+
+    # the in-process constructor on the same trailing window agrees on the last date
+    in_process = FactorRiskModelConstructor(returns_df, sectors_df, spec, market_df).get_risk_model(last)
+    assert stored.symbols == in_process.symbols
+    assert stored.factors == in_process.factors
+    assert np.allclose(stored.loadings(stored.symbols), in_process.loadings(stored.symbols), atol=0.1)  # rolling vs window-wide sector orthogonalisation
+    assert np.allclose(stored.idio_vol(stored.symbols), in_process.idio_vol(stored.symbols), atol=0.05)
+    assert np.linalg.eigvalsh(stored.covariance(stored.symbols)).min() > 0

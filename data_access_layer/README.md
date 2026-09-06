@@ -63,6 +63,12 @@ liquid_df = chain.filter(pl.col('bid') > 0).group_by('date').len().collect()
 | `load_earnings()` | 1999–2026 | announcement dates with a `bmo`/`amc`/`unknown` session |
 | `load_corporate_actions()` | 2017–2026 | splits and dividends, ex-date |
 | `load_symbology_check()` | 2017–2025 | per-symbol-year verdict on whether the chain is the right company |
+| `load_sectors()` | snapshot | `ticker`, `symbol`, `sector` — today's GICS classification |
+| `load_vol_reference_returns(symbol)` | 2017–2025 | one name's daily P&L per dollar of vega of a hedged ATM straddle; `SPX` is the market |
+| `load_vol_factor_returns()` | 2017–2025 | `date`, `factor`, `ret` — market and sector vol factors |
+| `load_vol_factor_loadings()` | 2017–2025 | `date`, `symbol`, `factor`, `loading` — rolling 250-session |
+| `load_vol_factor_covariances()` | 2017–2025 | `date`, `factor_1`, `factor_2`, `covariance` — Ledoit-Wolf shrunk |
+| `load_vol_idio_vol()` | 2017–2025 | `date`, `symbol`, `idio_vol` — residual std per dollar of vega |
 
 `load_universe` and `load_underlying` each read their current and historical
 files together — the pair does not overlap, so the window alone decides what you
@@ -204,6 +210,7 @@ Dependencies run one way down this list; there are no cycles.
 | [events.py](events.py) | earnings dates, `with_earnings_distance` |
 | [reference.py](reference.py) | index levels, yields, rates |
 | [options.py](options.py) | per-symbol chains, open interest, `spot_series` |
+| [risk.py](risk.py) | the volatility risk model voltium estimates and `vol-risk-model` writes |
 | [transforms.py](transforms.py) | split-adjusted return and realized vol as expressions |
 
 ## Adding a loader
