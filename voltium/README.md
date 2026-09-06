@@ -193,12 +193,16 @@ writes `demos/figures/*_<tag>.png`; the last logs are `demos/*_book.log`.
 
 | | VRP book | IV z-score book |
 | --- | --- | --- |
-| mean positions / gross vega | 37 / $10.7k | 51 / $9.8k |
-| gross P&L / costs / net | +$64k / $601k / -$537k | +$39k / $396k / -$357k |
-| annual turnover / gross vega | 38x | 31x |
-| decile 1 vs 10 forward 60-session gross P&L per $ vega | 4.1 vs 3.8 (t 4.7 / 4.7) | 4.9 vs 4.3 (t 6.5 / 5.0) |
-| net P&L loading on market vol factor (t) | +0.05 (0.4) | -0.15 (-1.7) |
-| intercept, net P&L per $ gross vega per day (t) | -0.35 (-2.7) | -0.27 (-2.6) |
+| mean positions / gross vega | 36 / $10.4k | 51 / $9.8k |
+| gross P&L / costs / net | +$92k / $530k / -$438k | +$38k / $388k / -$349k |
+| annual turnover / gross vega | 36x | 30x |
+| decile 1 vs 10 forward 60-session gross P&L per $ vega | 4.4 vs 4.0 (t 5.1 / 4.9) | 4.9 vs 4.5 (t 6.4 / 5.2) |
+| net P&L loading on market vol factor (t) | +0.01 (0.1) | -0.13 (-1.5) |
+| intercept, net P&L per $ gross vega per day (t) | -0.31 (-2.4) | -0.29 (-3.0) |
+
+Runs are reproducible bit for bit: every selection tie (two monthlies
+equidistant from the target, two strikes equidistant in delta) is broken by
+an explicit key, never by row order.
 
 Read these as a demonstration of the machinery, not of an edge. Both gross
 decile spreads have the expected sign and are small; both books are
