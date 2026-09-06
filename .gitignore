@@ -28,3 +28,8 @@ tools/backtest/results/*.parquet
 
 # Regenerable study caches (panel.py rebuilds in ~25s from data_store/)
 research/*/results/*.parquet
+
+# voltium rebuildable caches and demo run artefacts
+voltium/.cache/
+voltium/demos/records.parquet
+voltium/demos/portfolio.json

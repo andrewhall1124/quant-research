@@ -83,7 +83,8 @@ class Instrument(ABC):
         """Mark one unit at the midpoint; None if no leg is quoted at all."""
 
     @abstractmethod
-    def should_roll(self, unit: UnitSpec, date_: dt.date) -> bool: ...
+    def should_roll(self, unit: UnitSpec, mark: UnitMark) -> bool:
+        """Close this unit and open a fresh one today (time to expiry, drift, ...)."""
 
     @abstractmethod
     def hedge_shares(self, mark: UnitMark, contracts: float) -> float:

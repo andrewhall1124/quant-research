@@ -2,21 +2,32 @@
 
 The risk model's "returns" are the daily P&L of holding one long unit of the
 `Instrument` in each name, delta-hedged and rolled exactly as the book would
-be, divided by the unit's dollar vega at the previous close. They are built
-by running the `Backtester` itself, one symbol at a time, with
-`ReferenceUnitStrategy` — so the number is by construction the same thing the
-book earns per dollar of vega, gross of costs, and not a change in IV.
+be, divided by the unit's dollar vega **at inception** (the close it was
+opened or rolled into). They are built by running the `Backtester` itself,
+one symbol at a time, with `ReferenceUnitStrategy` — so the number is by
+construction the same thing the book earns per dollar of vega bought, gross
+of costs, and not a change in IV.
+
+Why inception vega and not the previous close's: a unit that has drifted
+from the money has a small current vega, and dividing a gamma-driven P&L
+(or a roll cost) by it produces per-vega numbers in the hundreds that are
+an artefact of the denominator, not risk. Inception vega is what the book
+actually sized on.
 
 Output panel, one row per (date, symbol):
 
-    pnl_per_vega    (option_pnl + hedge_pnl) / dollar_vega_prev
-    cost_per_vega   (option_cost + hedge_cost) / dollar_vega_prev
-    dollar_vega     of one unit at today's close
-    event           "", "open", "roll", "forced_close", ...
+    pnl_per_vega        (option_pnl + hedge_pnl) / entry_vega
+    cost_per_vega       (option_cost + hedge_cost) / entry_vega
+    exit_cost_per_vega  half-spread to close the unit today / entry_vega
+    dollar_vega         of one unit at today's close (current, not entry)
+    entry_vega          dollar vega of the unit held into today, at its inception
+    event               "", "open", "roll", "forced_close", ...
 
-The first session of a unit has no previous vega, so `pnl_per_vega` is null
-there. Reruns are cheap to avoid: pass `cache_dir` and each symbol's path is
-written to parquet and reused.
+On a roll day the P&L and the cost (closing the old unit, opening the new)
+are scaled by the *old* unit's inception vega. The first session of a unit
+has no prior unit, so `pnl_per_vega` is null there. Reruns are cheap to
+avoid: pass `cache_dir` and each symbol's path is written to parquet and
+reused.
 """
 
 from __future__ import annotations
@@ -44,7 +55,9 @@ REFERENCE_SCHEMA = {
     "symbol": pl.Utf8,
     "pnl_per_vega": pl.Float64,
     "cost_per_vega": pl.Float64,
+    "exit_cost_per_vega": pl.Float64,
     "dollar_vega": pl.Float64,
+    "entry_vega": pl.Float64,
     "dollar_theta": pl.Float64,
     "mid": pl.Float64,
     "underlying": pl.Float64,
@@ -92,18 +105,27 @@ def compute_reference_path(
     records_df, _ = backtester.run(progress=False)
     if records_df.is_empty():
         return pl.DataFrame(schema=REFERENCE_SCHEMA)
+    inception = pl.col("event").is_in(["open", "roll"])
     return (
         records_df.sort("date")
-        .with_columns(pl.col("dollar_vega").shift(1).alias("dollar_vega_prev"))
         .with_columns(
-            pl.when(pl.col("dollar_vega_prev") > 0)
-            .then((pl.col("option_pnl") + pl.col("hedge_pnl")) / pl.col("dollar_vega_prev"))
+            pl.when(inception).then(pl.col("dollar_vega")).otherwise(None).forward_fill().alias("inception_vega")
+        )
+        # the unit held *into* today is the one whose inception vega applied yesterday
+        .with_columns(pl.col("inception_vega").shift(1).alias("entry_vega"))
+        .with_columns(
+            pl.when(pl.col("entry_vega") > 0)
+            .then((pl.col("option_pnl") + pl.col("hedge_pnl")) / pl.col("entry_vega"))
             .otherwise(None)
             .alias("pnl_per_vega"),
-            pl.when(pl.col("dollar_vega_prev") > 0)
-            .then((pl.col("option_cost") + pl.col("hedge_cost")) / pl.col("dollar_vega_prev"))
+            pl.when(pl.col("entry_vega") > 0)
+            .then((pl.col("option_cost") + pl.col("hedge_cost")) / pl.col("entry_vega"))
             .otherwise(None)
             .alias("cost_per_vega"),
+            pl.when(pl.col("inception_vega") > 0)
+            .then(pl.col("exit_cost") / pl.col("inception_vega"))
+            .otherwise(None)
+            .alias("exit_cost_per_vega"),
         )
         .select(list(REFERENCE_SCHEMA))
     )

@@ -4,7 +4,12 @@ Selection: the listed *monthly* expiration nearest `target_dte` calendar days
 (default 60), the strike nearest the underlying with both a call and a put
 quoted. Marking: the sum of the two mids. Hedge: `-delta * multiplier`
 shares per contract, reset daily at the close. Roll: when `dte <= roll_dte`
-(default 20).
+(default 20), or when the strike has drifted more than `restrike_moneyness`
+(default 10%) from spot. The second trigger is a v1 addition to the spec's
+time-only roll: a straddle 15% from the money is a gamma position, not a
+vega position, its dollar vega collapses, and a book that sizes in dollar
+vega would otherwise keep adding contracts of it. Set `restrike_moneyness`
+to None for the time-only rule.
 
 A monthly expiration is taken to be one dated the 15th-21st of the month on
 a Thursday or Friday (the Thursday case covers Good Friday). Weeklies are
@@ -30,6 +35,7 @@ class StraddleConfig:
     max_dte: int = 120
     monthly_only: bool = True
     max_moneyness: float = 0.10  # |K/S - 1| bound on the entry strike
+    restrike_moneyness: float | None = 0.10  # roll when |K/S - 1| exceeds this
 
 
 def is_monthly_expiration(expiration: dt.date) -> bool:
@@ -113,8 +119,12 @@ class DeltaHedgedStraddle(Instrument):
             complete=True,
         )
 
-    def should_roll(self, unit: UnitSpec, date_: dt.date) -> bool:
-        return (unit.expiration - date_).days <= self.config.roll_dte
+    def should_roll(self, unit: UnitSpec, mark: UnitMark) -> bool:
+        if mark.dte <= self.config.roll_dte:
+            return True
+        if self.config.restrike_moneyness is None:
+            return False
+        return abs(unit.legs[0].strike / mark.underlying - 1.0) > self.config.restrike_moneyness
 
     def hedge_shares(self, mark: UnitMark, contracts: float) -> float:
         return -mark.delta * CONTRACT_MULTIPLIER * contracts

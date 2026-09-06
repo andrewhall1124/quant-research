@@ -5,7 +5,8 @@ Per session, in this order:
 1. Mark every held unit at the midpoint; option P&L is the change in mid
    times the multiplier and contracts. Stock hedge P&L is the hedge shares
    times the change in the underlying (close to close).
-2. Roll any unit at or inside `roll_dte`: close at mid (pay the option cost
+2. Roll any unit the instrument says to (`should_roll`: at or inside
+   `roll_dte`, or drifted from the money): close at mid (pay the option cost
    model), select a fresh unit, reopen the same contracts (pay again).
 3. On a rebalance session: strategy -> targets -> trade generator ->
    execute at mid, paying the option cost model on every contract traded.
@@ -13,7 +14,9 @@ Per session, in this order:
    `Instrument.hedge_shares(mark, contracts)` and pay the stock cost model on
    the shares traded. (The spec lists the hedge before the roll; doing it
    last means a roll does not pay for a hedge it immediately undoes.)
-5. Record one row per held symbol.
+5. Record one row per held symbol. `exit_cost` is what closing the position
+   at today's half-spread would cost; it is informational (nothing is
+   charged) and feeds the net-of-cost decile table.
 
 A unit with no usable quote carries its last mark (zero option P&L) and
 counts a stale day; after `max_stale_days`, or on reaching expiration, it is
@@ -57,6 +60,7 @@ RECORD_SCHEMA = {
     "hedge_cost": pl.Float64,
     "dollar_vega": pl.Float64,
     "dollar_theta": pl.Float64,
+    "exit_cost": pl.Float64,
     "book_delta": pl.Float64,
     "dte": pl.Int64,
     "stale": pl.Boolean,
@@ -161,7 +165,7 @@ class Backtester:
         for symbol in list(marks):
             position = portfolio.positions[symbol]
             mark = marks[symbol]
-            if not self.instrument.should_roll(position.unit, date_):
+            if not self.instrument.should_roll(position.unit, mark):
                 continue
             row = rows[symbol]
             row["option_cost"] += self.option_cost.compute(position.contracts, mark.bid, mark.ask, mark.mid)
@@ -268,6 +272,7 @@ def new_record(date_: dt.date, position: Position) -> dict:
         "hedge_cost": 0.0,
         "dollar_vega": position.last_vega * CONTRACT_MULTIPLIER * position.contracts,
         "dollar_theta": 0.0,
+        "exit_cost": 0.0,
         "book_delta": 0.0,
         "dte": (position.unit.expiration - date_).days,
         "stale": False,
@@ -286,6 +291,7 @@ def fill_record(row: dict, position: Position, mark: UnitMark | None) -> None:
     row["dte"] = (position.unit.expiration - row["date"]).days
     if mark is not None:
         row["dollar_theta"] = mark.theta * CONTRACT_MULTIPLIER * position.contracts
+        row["exit_cost"] = mark.half_spread * CONTRACT_MULTIPLIER * abs(position.contracts)
         row["book_delta"] = mark.delta * CONTRACT_MULTIPLIER * position.contracts + position.hedge_shares
     else:
         row["book_delta"] = position.last_delta * CONTRACT_MULTIPLIER * position.contracts + position.hedge_shares

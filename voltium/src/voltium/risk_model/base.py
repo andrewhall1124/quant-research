@@ -3,10 +3,10 @@
 atium's `RiskModel.build_covariance_matrix()` returns the covariance of
 asset returns; the weights are fractions of capital. Here the position is
 dollar vega and the "return" of one dollar of vega is the daily P&L of the
-reference straddle per dollar of vega (`providers/straddle_returns.py`), so
-`covariance(symbols)` is the daily covariance of P&L per dollar of vega, and
-for a position vector `w` in dollar vega, `w @ Sigma @ w` is the daily P&L
-variance in dollars squared.
+reference straddle per dollar of vega bought (`providers/straddle_returns.py`),
+so `covariance(symbols)` is the daily covariance of P&L per dollar of vega,
+and for a position vector `w` in dollar vega, `w @ Sigma @ w` is the daily
+P&L variance in dollars squared.
 """
 
 from __future__ import annotations
