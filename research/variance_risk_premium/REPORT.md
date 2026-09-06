@@ -13,9 +13,10 @@ fraction of the spread is paid.
 
 This matches Driessen, Maenhout and Vilkov (2009): the well-known index
 premium is compensation for correlation risk, and individual-stock variance
-carries little or no premium of its own. The SPX comparison here is also
-flat, but with 22 of 107 months missing and an approximate settlement it is
-not a clean measurement of the index premium.
+carries little or no premium of its own. The SPX comparison, on 102 of 107
+months after the index chain was repaired, is also flat for an ATM
+straddle: the index premium the literature measures against VIX-squared
+lives in the put wing, not at the money.
 
 | Short straddle, monthly, % of premium | Naked | Static hedge | Daily hedge |
 | --- | --- | --- | --- |
@@ -23,7 +24,7 @@ not a clean measurement of the index premium.
 | t-statistic | -0.81 | -0.53 | -0.57 |
 | Standard deviation | 43% | 34% | 20% |
 | Worst month (Feb 2020) | -369% | -263% | -136% |
-| SPX, mean (85 months) | -1.5% | -0.2% | -3.5% |
+| SPX, mean (102 months) | +2.6% | +3.7% | -1.2% |
 
 ## Construction
 
@@ -101,23 +102,26 @@ The daily hedge also trades stock every session, which is not charged here.
 
 ### The SPX comparison
 
-SPX monthlies through the same code give a daily-hedged mean of -3.5% of
-premium (t = -1.0) over 85 months, positive in 2017, 2019, 2020 and 2023 and
-negative in 2018, 2022, 2024 and 2025. Two things make this weaker than the
-single-name result:
+SPX monthlies through the same code give a daily-hedged mean of -1.2% of
+premium (t = -0.4) over 102 months, naked +2.6% and static-hedged +3.7%,
+none distinguishable from zero. By year the daily-hedged short earns
+1% to 14% of premium a month in 2017, 2019, 2020, 2021 and 2023 and loses
+3% to 23% a month in 2018, 2022, 2024 and 2025. The worst months are
+January 2018 (-134%), March 2025 (-105%) and July 2024 (-82%), each entered
+with one-month IV under 16% and realizing 23% to 51%.
 
-- The SPX chain has no quotes (zero bid and ask with volume present) for
-  Feb–Apr 2020, Aug–Sep and Nov–Dec 2020, and all of 2021. Those are
-  precisely the post-shock months where the premium is earned.
-- SPX monthlies settle on the third Friday's opening prints; the payoff here
-  uses that day's close.
+Two things about this measurement. SPX monthlies settle on the third
+Friday's opening prints; the payoff here uses that day's close. And ATM IV
+on SPX runs about 3 points below the VIX, because the VIX prices the skew
+and an ATM straddle does not. Over the sample the SPX ATM IV averages 15.2%
+against 14.1% realized: a one-point vol premium that a straddle's variance
+exposure and tail months turn into nothing. The index premium in the
+literature is measured against VIX-squared, which is a larger number than
+what an ATM straddle collects; that premium sits in the put wing.
 
-Also, ATM IV on SPX runs 2–3 points below the VIX, because the VIX prices
-the skew and an ATM straddle does not. The index premium in the literature is
-measured against VIX-squared, which is a larger number than what an ATM
-straddle collects. The straddle-based premium on the index is therefore
-expected to be smaller than the variance-swap premium, and this sample cannot
-tell whether it is positive.
+The index chain in the store had no quotes for most of 2020-2021 when this
+study was first run; `data_pipelines.cli index-repair` filled them from the
+15:59 intraday bar and the numbers above are on the repaired data.
 
 ## What this means for the other studies
 

@@ -5,7 +5,8 @@ and stand aside (or buy) when it inverts: the classic VIX carry rule, tested
 2017–2025. The VIX complex in the store starts in 2024, so the slope is
 rebuilt daily from the XSP option chain as 90-day minus 30-day ATM implied
 vol, and checked against VIX3M minus VIX where both exist. XSP is used
-because it is the one index root quoted through 2020–2021 in this store.
+because it was the one index root quoted through 2020–2021 before the
+index chain repair, and its third-Friday expiries settle on the close.
 
 Run from the project root, after the Goyal-Saretto panel exists:
 
