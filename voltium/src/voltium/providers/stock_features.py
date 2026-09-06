@@ -13,7 +13,10 @@ in a market-cap provider here when one exists.
 
 The market return defaults to the SPX close from the index chain's
 `underlying` column, which reaches the whole option history; the stock file
-only starts mid-2023.
+only starts mid-2023. `compute_stock_features` accepts a closes-only frame
+(`loaders.scan_spot_from_chains`) for that history; `log_size` is then null,
+since the chains carry no stock volume, and the signal drops it from its
+controls.
 """
 
 from __future__ import annotations
@@ -23,7 +26,7 @@ from dataclasses import dataclass
 
 import polars as pl
 
-from voltium.loaders import DataPaths, scan_options, scan_stocks
+from voltium.loaders import DataPaths, scan_options, scan_spot_from_chains, scan_stocks
 from voltium.providers.base import PanelProvider
 
 SESSIONS_PER_YEAR = 252
@@ -57,8 +60,11 @@ def compute_stock_features(
     stocks: pl.LazyFrame, market_df: pl.DataFrame, config: StockFeatureConfig = StockFeatureConfig()
 ) -> pl.LazyFrame:
     by = "symbol"
-    if "split_ratio" not in stocks.collect_schema().names():
+    columns = stocks.collect_schema().names()
+    if "split_ratio" not in columns:
         stocks = stocks.with_columns(pl.lit(1.0).alias("split_ratio"))
+    if "volume" not in columns:
+        stocks = stocks.with_columns(pl.lit(None, dtype=pl.Int64).alias("volume"))
     frame = (
         stocks.sort("symbol", "date")
         .with_columns((pl.col("close") * pl.col("split_ratio") / pl.col("close").shift(1).over(by)).log().alias("ret"))
@@ -92,9 +98,15 @@ class StockFeaturesProvider(PanelProvider):
         start: dt.date | None,
         end: dt.date | None,
         config: StockFeatureConfig = StockFeatureConfig(),
+        source: str = "ohlc",
     ) -> "StockFeaturesProvider":
-        stocks = scan_stocks(paths, start, end, with_splits=True)
-        if symbols is not None:
-            stocks = stocks.filter(pl.col("symbol").is_in(symbols))
+        """`source="ohlc"` reads the stock file (mid-2023 on); `"close"` reads
+        spot off the chains (2017 on, no volume, so no `log_size`)."""
+        if source == "close":
+            stocks = scan_spot_from_chains(paths, symbols, start, end)
+        else:
+            stocks = scan_stocks(paths, start, end, with_splits=True)
+            if symbols is not None:
+                stocks = stocks.filter(pl.col("symbol").is_in(symbols))
         market_df = load_spx_closes(paths, start, end)
         return cls(compute_stock_features(stocks, market_df, config).collect())

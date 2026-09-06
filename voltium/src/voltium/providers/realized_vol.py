@@ -96,6 +96,40 @@ def compute_realized_vol_panel(
     )
 
 
+def compute_close_to_close_panel(
+    closes: pl.LazyFrame, config: RealizedVolConfig = RealizedVolConfig()
+) -> pl.LazyFrame:
+    """The same panel from closes only: `(date, symbol, close[, split_ratio])`.
+
+    Realized variance over `n` sessions is the mean squared split-adjusted
+    log return, annualised; `rv_1` is the single day's squared return. This
+    is the estimator that reaches the whole option history (see
+    `loaders.scan_spot_from_chains`); Yang-Zhang needs OHLC and the stock
+    file only starts mid-2023. Same columns, so the HAR is indifferent.
+    """
+    by = "symbol"
+    if "split_ratio" not in closes.collect_schema().names():
+        closes = closes.with_columns(pl.lit(1.0).alias("split_ratio"))
+    frame = (
+        closes.filter(pl.col("close") >= config.min_price)
+        .sort("symbol", "date")
+        .with_columns(
+            ((pl.col("close") * pl.col("split_ratio") / pl.col("close").shift(1).over(by)).log() ** 2).alias("squared")
+        )
+    )
+
+    def variance(n: int) -> pl.Expr:
+        daily = pl.col("squared") if n == 1 else pl.col("squared").rolling_mean(n)
+        return daily * SESSIONS_PER_YEAR
+
+    n = config.forward_window
+    return (
+        frame.with_columns([variance(w).over(by).sqrt().alias(f"rv_{w}") for w in config.windows])
+        .with_columns(variance(n).shift(-n).over(by).sqrt().alias("rv_fwd"))
+        .select("date", "symbol", *[f"rv_{w}" for w in config.windows], "rv_fwd")
+    )
+
+
 class RealizedVolProvider(Provider):
     """`get(date) -> (date, symbol, rv_1, rv_5, rv_22, rv_fwd)`."""
 

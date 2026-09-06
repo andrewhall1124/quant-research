@@ -64,3 +64,14 @@ def test_har_forecaster_has_no_lookahead():
     joined = baseline.join(perturbed, on=["date", "symbol"], suffix="_perturbed").filter(pl.col("date") <= cutoff)
     assert joined.height > 100
     assert (joined["rv_fcst"] - joined["rv_fcst_perturbed"]).abs().max() < 1e-12
+
+
+def test_close_to_close_panel_matches_yang_zhang_scale():
+    from voltium.providers.realized_vol import compute_close_to_close_panel
+
+    stocks_df = make_stock_panel(n_days=800, n_symbols=2)
+    yz = compute_realized_vol_panel(stocks_df.lazy()).collect()
+    cc = compute_close_to_close_panel(stocks_df.lazy().select("date", "symbol", "close")).collect()
+    assert cc.columns == yz.columns
+    ratio = cc["rv_22"].drop_nulls().median() / yz["rv_22"].drop_nulls().median()
+    assert 0.7 < ratio < 1.4

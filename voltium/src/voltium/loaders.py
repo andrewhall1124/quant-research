@@ -525,6 +525,34 @@ def run_vega_check(sample_file: Path, rate: float = 0.04, rows: int = 400) -> Ve
     )
 
 
+def scan_spot_from_chains(
+    paths: DataPaths,
+    symbols: list[str] | None = None,
+    start: dt.date | None = None,
+    end: dt.date | None = None,
+    index: bool = False,
+    with_splits: bool = True,
+) -> pl.LazyFrame:
+    """`(date, symbol, close[, split_ratio])` from the chains' `underlying` column.
+
+    The stock file starts mid-2023; the chains carry the spot every greek was
+    struck against back to 2017, and it equals the stock close where both
+    exist. No open/high/low/volume, so this feeds the close-to-close
+    estimators only.
+    """
+    frame = (
+        scan_options(paths, symbols, start, end, index=index, with_oi=False)
+        .filter(pl.col("underlying") > 0)
+        .select("date", "symbol", pl.col("underlying").alias("close"))
+        .unique(subset=["date", "symbol"])
+    )
+    if with_splits and not index:
+        frame = frame.join(scan_splits(paths), on=["date", "symbol"], how="left").with_columns(
+            pl.col("split_ratio").fill_null(1.0)
+        )
+    return frame.sort("symbol", "date")
+
+
 # --------------------------------------------------------------------------
 # Risk model tables (written by data_pipelines.cli vol-risk-model)
 # --------------------------------------------------------------------------

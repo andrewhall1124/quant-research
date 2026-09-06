@@ -54,6 +54,7 @@ from voltium.providers.realized_vol import (
     HARConfig,
     HARForecaster,
     RealizedVolConfig,
+    compute_close_to_close_panel,
     compute_realized_vol_panel,
 )
 from voltium.providers.signals import CrossSectionalVRPSignal, SignalConfig, SignalProvider
@@ -67,7 +68,7 @@ from voltium.risk_model.constructor import FactorRiskModelConstructor
 from voltium.risk_model.spec import FactorSpec
 from voltium.risk_model.store import StoredFactorRiskModelConstructor
 from voltium.trade_generator import TradeGenerator, TradeGeneratorConfig
-from voltium.loaders import scan_options, scan_stocks
+from voltium.loaders import scan_options, scan_spot_from_chains, scan_stocks
 
 log = logging.getLogger("level_book")
 
@@ -123,6 +124,7 @@ class Panels:
     history_start: dt.date
     forward_end: dt.date
     started: float
+    rv_source: str
 
 
 def build_parser(description: str) -> argparse.ArgumentParser:
@@ -133,6 +135,12 @@ def build_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--refresh", action="store_true", help="rebuild cached panels")
     parser.add_argument("--limit", type=int, default=None, help="use only the first N symbols (smoke test)")
     parser.add_argument("--in-process", action="store_true", help="estimate the risk model here instead of reading the store")
+    parser.add_argument(
+        "--rv-source",
+        default="ohlc",
+        choices=["ohlc", "close"],
+        help="realized vol and stock features from the stock OHLC file (mid-2023 on) or close-to-close off the chains (2017 on)",
+    )
     return parser
 
 
@@ -181,15 +189,27 @@ def build_panels(args: argparse.Namespace) -> Panels:
     ).collect()
     log.info("surface: %d rows (%.0fs)", surface_df.height, time.time() - started)
 
-    rv_df = compute_realized_vol_panel(scan_stocks(paths, stock_start, forward_end, with_splits=True).filter(pl.col("symbol").is_in(symbols))).collect()
-    spx_rv_df = build_spx_indices_rv(paths, stock_start, forward_end)
+    if args.rv_source == "close":
+        # as far back as the calendar goes, so the HAR has the most history to fit on
+        stock_start = calendar.sessions[0]
+        rv_df = materialize(
+            compute_close_to_close_panel(scan_spot_from_chains(paths, symbols, stock_start, forward_end)),
+            CACHE_DIR / f"rv_close_{stock_start}_{forward_end}.parquet",
+            refresh=args.refresh,
+        )
+        spx_rv_df = compute_close_to_close_panel(
+            scan_spot_from_chains(paths, ["SPX"], stock_start, forward_end, index=True, with_splits=False)
+        ).collect()
+    else:
+        rv_df = compute_realized_vol_panel(scan_stocks(paths, stock_start, forward_end, with_splits=True).filter(pl.col("symbol").is_in(symbols))).collect()
+        spx_rv_df = build_spx_indices_rv(paths, stock_start, forward_end)
     forecaster = HARForecaster(HARConfig(forward_window=60))
     forecast_df = forecaster.forecast(rv_df, apply_df=spx_rv_df)
     spx_forecast_df = forecast_df.filter(pl.col("symbol") == "SPX")
     forecast_df = forecast_df.filter(pl.col("symbol") != "SPX")
     log.info("HAR: %d forecasts, last fit %s (%.0fs)", forecast_df.height, forecaster.coefficients_df.tail(1).to_dicts(), time.time() - started)
 
-    features = StockFeaturesProvider.from_store(paths, symbols, stock_start, forward_end)
+    features = StockFeaturesProvider.from_store(paths, symbols, stock_start, forward_end, source=args.rv_source)
     market_return_df = load_spx_closes(paths, history_start, forward_end)
 
     spec = FactorSpec(market_source="spx", use_sectors=True, window=250, min_observations=120)
@@ -204,7 +224,7 @@ def build_panels(args: argparse.Namespace) -> Panels:
         instrument=instrument, reference=reference, spx_reference=spx_reference,
         surface_df=surface_df, spx_surface_df=spx_surface_df, forecast_df=forecast_df, spx_forecast_df=spx_forecast_df,
         features=features, market_return_df=market_return_df, spec=spec, risk_model_constructor=risk_model_constructor,
-        history_start=history_start, forward_end=forward_end, started=started,
+        history_start=history_start, forward_end=forward_end, started=started, rv_source=args.rv_source,
     )
 
 
@@ -218,8 +238,11 @@ def build_vrp_signal(panels: Panels) -> CrossSectionalVRPSignal:
     if spx_vrp_df.is_empty():
         log.warning("no SPX variance premium available; falling back to the universe mean")
         spx_vrp_df = None
+    # no stock volume off the chains, so no size control before the stock file
+    controls = ("idio_vol",) if panels.rv_source == "close" else ("log_size", "idio_vol")
     signal = CrossSectionalVRPSignal(
-        panels.surface_df, panels.forecast_df, panels.features.panel_df, panels.sectors_df, panels.spec, SignalConfig(), spx_vrp_df
+        panels.surface_df, panels.forecast_df, panels.features.panel_df, panels.sectors_df, panels.spec,
+        SignalConfig(controls=controls), spx_vrp_df,
     )
     log.info("signal: %d rows, spx factor used: %s", signal.panel_df.height, signal.used_spx)
     return signal
@@ -254,6 +277,7 @@ def run_book(args: argparse.Namespace, panels: Panels, signal: SignalProvider, t
         hedge_cost=PerShareCost(0.005),
     )
     records_df, portfolio = backtester.run()
+    tag = f"{tag}_{args.start.year}_{args.end.year}" if args.rv_source == "close" else tag
     records_df.write_parquet(DEMO_DIR / f"records_{tag}.parquet")
     portfolio.save(DEMO_DIR / f"portfolio_{tag}.json")
     log.info("backtest done (%.0fs)", time.time() - started)
