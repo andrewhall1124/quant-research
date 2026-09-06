@@ -131,7 +131,7 @@ docstring:
 
 1. Mark every unit at mid; option P&L and close-to-close hedge P&L.
 2. Roll any unit the instrument says to: at `roll_dte` (20), or when the strike
-   has drifted more than 10% from spot. Close and reopen at mid, paying the
+   has drifted more than 15% from spot. Close and reopen at mid, paying the
    option cost model twice.
 3. On a rebalance session (`daily` / `weekly`): risk model → alphas →
    optimizer → trade generator → execute at mid, paying costs.
@@ -168,25 +168,25 @@ gross short cap $10k, λ = 1e-5, turnover 0.10/$vega, jump penalty 1.0). The
 demo prints `summary()`, the factor regression and the 60-session decile
 table and writes `demos/figures/`. See `demos/level_book.log` for the last run.
 
-Last run (2025-01-02 to 2025-06-30, 533 names, 122 sessions, 16 min cold):
+Last run (2025-01-02 to 2025-06-30, 533 names, 122 sessions, 16 min cold,
+full half-spread paid, 15% re-strike band):
 
 | | |
 | --- | --- |
-| mean positions / gross vega | 35 / $10.9k per vol point |
-| gross P&L / costs / net | +$141k / $613k / -$472k |
-| annual turnover / gross vega | 33x |
-| decile 1 vs 10 forward 60-session gross P&L per $ vega | 5.1 vs 3.3 (t 5.7 vs 3.8) |
-| net P&L loading on market vol factor | -0.09 (t -1.1); intercept -0.31/day (t -3.5) |
+| mean positions / gross vega | 37 / $10.5k per vol point |
+| gross P&L / costs / net | +$74k / $538k / -$464k |
+| annual turnover / gross vega | 37x |
+| decile 1 vs 10 forward 60-session gross P&L per $ vega | 4.2 vs 3.7 (t 4.8 vs 4.6) |
+| net P&L loading on market vol factor | -0.06 (t -0.5); intercept -0.32/day (t -2.8) |
 
 Read this as a demonstration of the machinery, not of an edge. The gross
 decile spread has the expected sign but is small, and the book is dominated
 by costs: crossing the full half-spread on EOD single-name straddle quotes is
-a few vol points of vega per round trip, a 10% re-strike band rolls a
-30-vol name every few weeks in a year like 2025, and a myopic weekly MVO
-turns the book over far faster than a 30-session signal warrants. The
-levers are all config: `HalfSpreadCost(fraction=0.5)`,
-`StraddleConfig(restrike_moneyness=0.15)`, `TurnoverPenalty`, the no-trade
-`band`, and `rebalance="weekly"` with a longer signal smoothing.
+a few vol points of vega per round trip, every roll pays it twice, and a
+myopic weekly MVO turns the book over far faster than a 30-session signal
+warrants. The levers are all config: `TurnoverPenalty`, the no-trade
+`band`, `rebalance` and the signal smoothing, `StraddleConfig(restrike_moneyness)`,
+and `HalfSpreadCost(fraction)` if you ever want a half-way fill.
 
 ## Known v1 limitations
 

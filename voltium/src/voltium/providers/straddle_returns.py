@@ -33,6 +33,7 @@ reused.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import logging
 from pathlib import Path
 
@@ -149,8 +150,11 @@ class StraddleReturnsProvider(PanelProvider):
         refresh: bool = False,
     ) -> "StraddleReturnsProvider":
         pieces = []
+        # the cache is keyed on the instrument's config too, so a changed roll
+        # rule never reuses paths built under the old one
+        tag = hashlib.md5(repr(getattr(instrument, "config", instrument.__class__.__name__)).encode()).hexdigest()[:8]
         for count, symbol in enumerate(symbols, 1):
-            cache_path = cache_dir / f"{symbol}_{start}_{end}.parquet" if cache_dir else None
+            cache_path = cache_dir / f"{symbol}_{start}_{end}_{tag}.parquet" if cache_dir else None
             if cache_path is not None and cache_path.exists() and not refresh:
                 pieces.append(pl.read_parquet(cache_path))
                 continue

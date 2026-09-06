@@ -5,7 +5,7 @@ Selection: the listed *monthly* expiration nearest `target_dte` calendar days
 quoted. Marking: the sum of the two mids. Hedge: `-delta * multiplier`
 shares per contract, reset daily at the close. Roll: when `dte <= roll_dte`
 (default 20), or when the strike has drifted more than `restrike_moneyness`
-(default 10%) from spot. The second trigger is a v1 addition to the spec's
+(default 15%, about a one-sigma 60-day move for a 30-vol name) from spot. The second trigger is a v1 addition to the spec's
 time-only roll: a straddle 15% from the money is a gamma position, not a
 vega position, its dollar vega collapses, and a book that sizes in dollar
 vega would otherwise keep adding contracts of it. Set `restrike_moneyness`
@@ -35,7 +35,7 @@ class StraddleConfig:
     max_dte: int = 120
     monthly_only: bool = True
     max_moneyness: float = 0.10  # |K/S - 1| bound on the entry strike
-    restrike_moneyness: float | None = 0.10  # roll when |K/S - 1| exceeds this
+    restrike_moneyness: float | None = 0.15  # roll when |K/S - 1| exceeds this
 
 
 def is_monthly_expiration(expiration: dt.date) -> bool:
