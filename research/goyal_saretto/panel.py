@@ -125,7 +125,7 @@ def compute_spot_history(chain: pl.LazyFrame) -> pl.DataFrame:
     return spot.with_columns(
         (pl.col("log_return").rolling_std(HV_WINDOW, min_samples=HV_MIN_OBSERVATIONS) * (252 ** 0.5)).alias("hv"),
         pl.col("log_return").rolling_sum(21).alias("return_1m"),
-    ).select("symbol", "date", "spot", "hv", "return_1m").collect()
+    ).select("symbol", "date", "spot", "log_return", "hv", "return_1m").collect()
 
 
 def extract_symbol(symbol: str, schedule_df: pl.DataFrame) -> pl.DataFrame | None:
