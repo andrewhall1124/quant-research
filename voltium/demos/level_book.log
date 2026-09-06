@@ -1,40 +1,40 @@
-12:30:40 level_book 533 symbols, history from 2023-10-23, forward to 2025-10-08
-12:30:40 level_book reference paths: 250403 rows (0s)
-12:30:40 voltium.loaders vega convention for /Users/andrew/Projects/quant-research/data_store/option_greeks_2023/A.parquet: per_1.00_iv (per-unit share 1.00, per-point share 0.00, median dP/vega ratio 0.0101, theta/day share 1.00)
-12:30:40 voltium.loaders vega convention for /Users/andrew/Projects/quant-research/data_store/index_greeks_2023/SPX.parquet: per_1.00_iv (per-unit share 1.00, per-point share 0.00, median dP/vega ratio 0.0101, theta/day share 1.00)
-12:30:40 level_book surface: 250255 rows (0s)
-12:30:40 level_book HAR: 256866 forecasts, last fit [{'date': datetime.date(2025, 10, 1), 'rows': 254694, 'const': -0.870249241039082, 'residual_var': 0.27997243607241123, 'b_rv_1': 0.1598099253128277, 'b_rv_5': 0.16263868384702326, 'b_rv_22': 0.9035994839514316}] (1s)
-12:30:41 level_book signal: 139907 rows, spx factor used: True (1s)
-12:30:41 voltium.loaders vega convention for /Users/andrew/Projects/quant-research/data_store/option_greeks/A.parquet: per_1.00_iv (per-unit share 1.00, per-point share 0.00, median dP/vega ratio 0.0101, theta/day share 1.00)
-12:30:49 voltium.backtester 2025-01-02  positions=11  day pnl=-4287  cum pnl=-4287
-12:31:46 voltium.backtester 2025-01-17  positions=26  day pnl=-7637  cum pnl=-26929
-12:32:43 voltium.backtester 2025-02-03  positions=34  day pnl=-22050  cum pnl=5363
-12:33:40 voltium.backtester 2025-02-18  positions=39  day pnl=-43154  cum pnl=-70452
-12:34:36 voltium.backtester 2025-03-04  positions=41  day pnl=-8681  cum pnl=-232621
-12:35:32 voltium.backtester 2025-03-18  positions=35  day pnl=3361  cum pnl=-253331
-12:36:28 voltium.backtester 2025-04-01  positions=41  day pnl=-1804  cum pnl=-267822
-12:37:24 voltium.backtester 2025-04-15  positions=41  day pnl=12486  cum pnl=-333448
-12:38:22 voltium.backtester 2025-04-30  positions=37  day pnl=8742  cum pnl=-364811
-12:39:19 voltium.backtester 2025-05-14  positions=36  day pnl=-3752  cum pnl=-381821
-12:40:17 voltium.backtester 2025-05-29  positions=44  day pnl=500  cum pnl=-414255
-12:41:19 voltium.backtester 2025-06-12  positions=43  day pnl=2980  cum pnl=-465977
-12:42:18 voltium.backtester 2025-06-27  positions=40  day pnl=-9009  cum pnl=-468734
-12:42:24 voltium.backtester 2025-06-30  positions=41  day pnl=-11448  cum pnl=-480182
-12:42:24 level_book backtest done (705s)
+13:44:53 level_book 533 symbols, history from 2023-10-23, forward to 2025-10-08
+13:44:53 level_book reference paths: 250403 rows (0s)
+13:44:53 voltium.loaders vega convention for /Users/andrew/Projects/quant-research/data_store/option_greeks_2023/A.parquet: per_1.00_iv (per-unit share 1.00, per-point share 0.00, median dP/vega ratio 0.0101, theta/day share 1.00)
+13:44:53 voltium.loaders vega convention for /Users/andrew/Projects/quant-research/data_store/index_greeks_2023/SPX.parquet: per_1.00_iv (per-unit share 1.00, per-point share 0.00, median dP/vega ratio 0.0101, theta/day share 1.00)
+13:44:53 level_book surface: 250255 rows (0s)
+13:44:53 level_book HAR: 256866 forecasts, last fit [{'date': datetime.date(2025, 10, 1), 'rows': 254694, 'const': -0.870249241039082, 'residual_var': 0.27997243607241123, 'b_rv_1': 0.1598099253128277, 'b_rv_5': 0.16263868384702326, 'b_rv_22': 0.9035994839514316}] (1s)
+13:44:53 level_book signal: 139907 rows, spx factor used: True
+13:44:53 voltium.loaders vega convention for /Users/andrew/Projects/quant-research/data_store/option_greeks/A.parquet: per_1.00_iv (per-unit share 1.00, per-point share 0.00, median dP/vega ratio 0.0101, theta/day share 1.00)
+13:45:00 voltium.backtester 2025-01-02  positions=11  day pnl=-4287  cum pnl=-4287
+13:45:59 voltium.backtester 2025-01-17  positions=26  day pnl=-4621  cum pnl=-26806
+13:47:00 voltium.backtester 2025-02-03  positions=34  day pnl=-36868  cum pnl=-2839
+13:48:00 voltium.backtester 2025-02-18  positions=39  day pnl=-38586  cum pnl=-84975
+13:49:01 voltium.backtester 2025-03-04  positions=41  day pnl=-12123  cum pnl=-238223
+13:50:02 voltium.backtester 2025-03-18  positions=35  day pnl=2620  cum pnl=-257669
+13:50:59 voltium.backtester 2025-04-01  positions=39  day pnl=-1668  cum pnl=-328219
+13:51:57 voltium.backtester 2025-04-15  positions=39  day pnl=12674  cum pnl=-398072
+13:52:55 voltium.backtester 2025-04-30  positions=37  day pnl=10425  cum pnl=-428439
+13:53:53 voltium.backtester 2025-05-14  positions=35  day pnl=-4744  cum pnl=-449582
+13:54:49 voltium.backtester 2025-05-29  positions=44  day pnl=570  cum pnl=-467027
+13:55:47 voltium.backtester 2025-06-12  positions=44  day pnl=3640  cum pnl=-525875
+13:56:44 voltium.backtester 2025-06-27  positions=39  day pnl=-10053  cum pnl=-526523
+13:56:51 voltium.backtester 2025-06-30  positions=39  day pnl=-10733  cum pnl=-537255
+13:56:51 level_book backtest done (719s)
 
 === summary ===
                             sessions: 122
-                      mean_positions: 36.9836
-                     mean_gross_vega: 10,459.6864
-                       mean_net_vega: -1,255.1415
-                     total_gross_pnl: 54,035.2557
-                          total_cost: 534,217.6412
-                       total_net_pnl: -480,182.3855
-                              sharpe: -4.2974
-       annual_net_pnl_per_gross_vega: -94.8262
-                        max_drawdown: -507,594.9173
-     annual_turnover_over_gross_vega: 36.7191
-                           cost_drag: 9.8865
+                      mean_positions: 36.7377
+                     mean_gross_vega: 10,687.2851
+                       mean_net_vega: -938.1629
+                     total_gross_pnl: 63,927.7928
+                          total_cost: 601,183.1390
+                       total_net_pnl: -537,255.3462
+                              sharpe: -4.4454
+       annual_net_pnl_per_gross_vega: -103.8375
+                        max_drawdown: -571,284.1695
+     annual_turnover_over_gross_vega: 38.3399
+                           cost_drag: 9.4041
 
 === factor regression (net P&L per $ gross vega on the risk factors) ===
 shape: (14, 5)
@@ -43,20 +43,20 @@ shape: (14, 5)
 │ ---                    ┆ ---         ┆ ---     ┆ ---       ┆ ---          │
 │ str                    ┆ f64         ┆ f64     ┆ f64       ┆ i64          │
 ╞════════════════════════╪═════════════╪═════════╪═══════════╪══════════════╡
-│ const                  ┆ -0.3326     ┆ -2.5448 ┆ 0.1576    ┆ 122          │
-│ Communication Services ┆ -0.2805     ┆ -1.5526 ┆ 0.1576    ┆ 122          │
-│ Consumer Discretionary ┆ 0.1369      ┆ 0.5056  ┆ 0.1576    ┆ 122          │
-│ Consumer Staples       ┆ 0.0957      ┆ 0.3426  ┆ 0.1576    ┆ 122          │
-│ Energy                 ┆ 0.0174      ┆ 0.1314  ┆ 0.1576    ┆ 122          │
-│ Financials             ┆ -0.5528     ┆ -1.7985 ┆ 0.1576    ┆ 122          │
-│ Health Care            ┆ 0.1484      ┆ 0.6438  ┆ 0.1576    ┆ 122          │
-│ Industrials            ┆ 0.1757      ┆ 0.5607  ┆ 0.1576    ┆ 122          │
-│ Information Technology ┆ -0.1937     ┆ -0.8236 ┆ 0.1576    ┆ 122          │
-│ Materials              ┆ -0.4557     ┆ -1.5320 ┆ 0.1576    ┆ 122          │
-│ Real Estate            ┆ 0.1506      ┆ 0.7136  ┆ 0.1576    ┆ 122          │
-│ Utilities              ┆ 0.1450      ┆ 1.0597  ┆ 0.1576    ┆ 122          │
-│ market                 ┆ 0.0243      ┆ 0.2153  ┆ 0.1576    ┆ 122          │
-│ spx_return             ┆ -8.3231     ┆ -0.5079 ┆ 0.1576    ┆ 122          │
+│ const                  ┆ -0.3502     ┆ -2.6606 ┆ 0.1612    ┆ 122          │
+│ Communication Services ┆ -0.3550     ┆ -1.9514 ┆ 0.1612    ┆ 122          │
+│ Consumer Discretionary ┆ 0.1180      ┆ 0.4325  ┆ 0.1612    ┆ 122          │
+│ Consumer Staples       ┆ 0.0125      ┆ 0.0446  ┆ 0.1612    ┆ 122          │
+│ Energy                 ┆ 0.0190      ┆ 0.1426  ┆ 0.1612    ┆ 122          │
+│ Financials             ┆ -0.5932     ┆ -1.9159 ┆ 0.1612    ┆ 122          │
+│ Health Care            ┆ 0.1711      ┆ 0.7368  ┆ 0.1612    ┆ 122          │
+│ Industrials            ┆ 0.1429      ┆ 0.4529  ┆ 0.1612    ┆ 122          │
+│ Information Technology ┆ -0.1961     ┆ -0.8277 ┆ 0.1612    ┆ 122          │
+│ Materials              ┆ -0.2351     ┆ -0.7845 ┆ 0.1612    ┆ 122          │
+│ Real Estate            ┆ 0.2047      ┆ 0.9629  ┆ 0.1612    ┆ 122          │
+│ Utilities              ┆ 0.1824      ┆ 1.3231  ┆ 0.1612    ┆ 122          │
+│ market                 ┆ 0.0458      ┆ 0.4026  ┆ 0.1612    ┆ 122          │
+│ spx_return             ┆ -3.9033     ┆ -0.2365 ┆ 0.1612    ┆ 122          │
 └────────────────────────┴─────────────┴─────────┴───────────┴──────────────┘
 
 === decile table (forward 60-session P&L per $ vega, long reference straddle) ===
@@ -78,4 +78,4 @@ shape: (10, 6)
 │ 10     ┆ 3.8478                 ┆ -19.4637             ┆ 4.7469       ┆ 50.3689    ┆ 122   │
 └────────┴────────────────────────┴──────────────────────┴──────────────┴────────────┴───────┘
 
-figures in /Users/andrew/Projects/quant-research/voltium/demos/figures  (705s)
+figures in /Users/andrew/Projects/quant-research/voltium/demos/figures (*_vrp.png)  (719s)

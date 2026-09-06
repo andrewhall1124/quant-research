@@ -176,32 +176,40 @@ asserts the residuals are orthogonal to every regressor.
 
 ## Demo output
 
-`demos/level_book.py` on the full universe, 2025-01-02 to 2025-06-30, weekly
-rebalance, full half-spread paid on every option fill, $0.005/share on the
-hedge. Knobs at the top of the file (gross vega budget $20k, per-name cap $2k,
-gross short cap $10k, λ = 1e-5, turnover 0.10/$vega, jump penalty 1.0). The
-demo prints `summary()`, the factor regression and the 60-session decile
-table and writes `demos/figures/`. See `demos/level_book.log` for the last run.
+Two books share every input except the signal:
 
-Last run (2025-01-02 to 2025-06-30, 533 names, 122 sessions, 12 min on the
-stored risk model, full half-spread paid, 15% re-strike band):
+* `demos/level_book.py` — the residualised variance premium (`CrossSectionalVRPSignal`).
+* `demos/iv_zscore_book.py` — each name's log 60-day ATM IV against its own
+  trailing 250-session mean and std (`TimeSeriesIVZScoreSignal`), a
+  mean-reversion control with no forecast and no cross-sectional regression.
 
-| | |
-| --- | --- |
-| mean positions / gross vega | 37 / $10.5k per vol point |
-| gross P&L / costs / net | +$54k / $534k / -$480k |
-| annual turnover / gross vega | 37x |
-| decile 1 vs 10 forward 60-session gross P&L per $ vega | 4.1 vs 3.8 (t 4.7 vs 4.7) |
-| net P&L loading on market vol factor | +0.02 (t 0.2); intercept -0.33/day (t -2.5) |
+Both run 2025-01-02 to 2025-06-30 on the full universe with the stored risk
+model, weekly rebalance, full half-spread paid on every option fill,
+$0.005/share on the hedge, and a 15% re-strike band. Knobs are at the top of
+`level_book.py` (gross vega budget $20k, per-name cap $2k, gross short cap
+$10k, λ = 1e-5, turnover 0.10/$vega, jump penalty 1.0). Each prints
+`summary()`, the factor regression and the 60-session decile table, and
+writes `demos/figures/*_<tag>.png`; the last logs are `demos/*_book.log`.
 
-Read this as a demonstration of the machinery, not of an edge. The gross
-decile spread has the expected sign but is small, and the book is dominated
-by costs: crossing the full half-spread on EOD single-name straddle quotes is
-a few vol points of vega per round trip, every roll pays it twice, and a
-myopic weekly MVO turns the book over far faster than a 30-session signal
-warrants. The levers are all config: `TurnoverPenalty`, the no-trade
-`band`, `rebalance` and the signal smoothing, `StraddleConfig(restrike_moneyness)`,
-and `HalfSpreadCost(fraction)` if you ever want a half-way fill.
+| | VRP book | IV z-score book |
+| --- | --- | --- |
+| mean positions / gross vega | 37 / $10.7k | 51 / $9.8k |
+| gross P&L / costs / net | +$64k / $601k / -$537k | +$39k / $396k / -$357k |
+| annual turnover / gross vega | 38x | 31x |
+| decile 1 vs 10 forward 60-session gross P&L per $ vega | 4.1 vs 3.8 (t 4.7 / 4.7) | 4.9 vs 4.3 (t 6.5 / 5.0) |
+| net P&L loading on market vol factor (t) | +0.05 (0.4) | -0.15 (-1.7) |
+| intercept, net P&L per $ gross vega per day (t) | -0.35 (-2.7) | -0.27 (-2.6) |
+
+Read these as a demonstration of the machinery, not of an edge. Both gross
+decile spreads have the expected sign and are small; both books are
+dominated by costs: crossing the full half-spread on EOD single-name
+straddle quotes is a few vol points of vega per round trip, every roll pays
+it twice (rolls are ~70% of total cost), and a myopic weekly MVO turns the
+book over far faster than a 30-session signal warrants. The time-series
+signal spreads over more names and churns less, which is why its costs are
+a third lower. The levers are all config: `TurnoverPenalty`, the no-trade
+`band`, `rebalance` and the signal smoothing, `StraddleConfig(restrike_moneyness,
+roll_dte)`, and `HalfSpreadCost(fraction)` if you ever want a half-way fill.
 
 ## Known v1 limitations
 
