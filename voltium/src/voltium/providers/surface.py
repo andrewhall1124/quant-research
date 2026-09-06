@@ -70,7 +70,7 @@ def compute_atm_pillars(options: pl.LazyFrame, config: SurfaceConfig) -> pl.Lazy
         .with_columns(distance.alias("distance"))
     )
     best_per_right = (
-        candidates.sort("distance")
+        candidates.sort("distance", "strike")  # strike breaks a tie deterministically
         .group_by("date", "symbol", "expiration", "right", maintain_order=True)
         .agg(pl.col("iv").first(), pl.col("dte").first(), pl.col("underlying").first())
     )

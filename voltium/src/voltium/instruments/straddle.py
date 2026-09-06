@@ -73,11 +73,14 @@ class DeltaHedgedStraddle(Instrument):
         )
         if pairs.is_empty():
             return None
-        nearest_dte = pairs.with_columns((pl.col("dte") - cfg.target_dte).abs().alias("dte_gap"))
-        best_gap = nearest_dte["dte_gap"].min()
+        # Ties are real: monthlies sit 4-5 weeks apart, so two expirations are
+        # often equidistant from the target. Every key is explicit so the
+        # choice never depends on row order: nearest to target, then the
+        # longer of two equidistant series (more time before the roll), then
+        # the strike nearest spot, then the lower strike.
         chosen = (
-            nearest_dte.filter(pl.col("dte_gap") == best_gap)
-            .sort("moneyness", "strike")
+            pairs.with_columns((pl.col("dte") - cfg.target_dte).abs().alias("dte_gap"))
+            .sort(["dte_gap", "dte", "moneyness", "strike"], descending=[False, True, False, False])
             .head(1)
         )
         expiration = chosen["expiration"][0]
