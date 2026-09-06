@@ -318,10 +318,29 @@ def scan_open_interest(
 # --------------------------------------------------------------------------
 
 
+def scan_splits(paths: DataPaths) -> pl.LazyFrame:
+    """`(date, symbol, split_ratio)` on ex-dates, from the corporate actions table."""
+    return (
+        pl.scan_parquet(paths.root / "corporate_actions.parquet")
+        .filter(pl.col("action") == "split")
+        .select(
+            pl.col("date").cast(pl.Date),
+            pl.col("symbol").cast(pl.Utf8).str.replace_all(r"\.", "").alias("symbol"),
+            pl.col("value").cast(pl.Float64).alias("split_ratio"),
+        )
+        .unique(subset=["date", "symbol"])
+    )
+
+
 def scan_stocks(
-    paths: DataPaths, start: dt.date | None = None, end: dt.date | None = None
+    paths: DataPaths, start: dt.date | None = None, end: dt.date | None = None, with_splits: bool = False
 ) -> pl.LazyFrame:
-    """Canonical stock rows. Drops the vendor's zero-priced delisting rows."""
+    """Canonical stock rows. Drops the vendor's zero-priced delisting rows.
+
+    Prices are as traded (unadjusted). `with_splits=True` appends a
+    `split_ratio` column (1.0 except on an ex-date), which is what a
+    close-to-close return needs: `close * split_ratio / prev_close - 1`.
+    """
     frame = (
         pl.scan_parquet(paths.stock_files)
         .select(
@@ -335,7 +354,12 @@ def scan_stocks(
         )
         .filter(pl.col("close") > 0)
     )
-    return apply_window(frame, start, end).select(list(STOCK_SCHEMA))
+    frame = apply_window(frame, start, end).select(list(STOCK_SCHEMA))
+    if with_splits:
+        frame = frame.join(scan_splits(paths), on=["date", "symbol"], how="left").with_columns(
+            pl.col("split_ratio").fill_null(1.0)
+        )
+    return frame
 
 
 def scan_universe(

@@ -38,3 +38,18 @@ class FixedTargetStrategy(Strategy):
             {"symbol": list(self.targets), "target_vega": list(self.targets.values())},
             schema=TARGET_SCHEMA,
         )
+
+
+class ReferenceUnitStrategy(Strategy):
+    """Hold exactly one long unit in every symbol that has a chain today.
+
+    Used to build the per-unit-vega reference P&L series the risk model and
+    the decile table are estimated on.
+    """
+
+    def generate_targets(self, date_: dt.date, chain_df: pl.DataFrame, portfolio: Portfolio) -> pl.DataFrame:
+        symbols = chain_df["symbol"].unique().sort().to_list()
+        return pl.DataFrame(
+            {"symbol": symbols, "target_vega": [0.0] * len(symbols), "target_contracts": [1] * len(symbols)},
+            schema=TARGET_SCHEMA | {"target_contracts": pl.Int64},
+        )

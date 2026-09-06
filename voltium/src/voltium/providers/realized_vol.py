@@ -72,11 +72,13 @@ def compute_realized_vol_panel(
     are dropped for the day.
     """
     by = "symbol"
+    if "split_ratio" not in stocks.collect_schema().names():
+        stocks = stocks.with_columns(pl.lit(1.0).alias("split_ratio"))
     frame = (
         stocks.filter(pl.col("close") >= config.min_price)
         .sort("symbol", "date")
         .with_columns(
-            (pl.col("open") / pl.col("close").shift(1).over(by)).log().alias("overnight"),
+            (pl.col("open") * pl.col("split_ratio") / pl.col("close").shift(1).over(by)).log().alias("overnight"),
             (pl.col("close") / pl.col("open")).log().alias("close_open"),
             (
                 (pl.col("high") / pl.col("close")).log() * (pl.col("high") / pl.col("open")).log()
@@ -112,7 +114,7 @@ class YangZhangRealizedVol(RealizedVolProvider, PanelProvider):
         end: dt.date | None,
         config: RealizedVolConfig = RealizedVolConfig(),
     ) -> "YangZhangRealizedVol":
-        stocks = scan_stocks(paths, start, end)
+        stocks = scan_stocks(paths, start, end, with_splits=True)
         if symbols is not None:
             stocks = stocks.filter(pl.col("symbol").is_in(symbols))
         return cls(compute_realized_vol_panel(stocks, config).collect(), config)
@@ -147,9 +149,18 @@ class HARForecaster(RealizedVolForecaster):
         self.config = config
         self.coefficients_df: pl.DataFrame | None = None
 
-    def forecast(self, panel_df: pl.DataFrame) -> pl.DataFrame:
+    def forecast(self, panel_df: pl.DataFrame, apply_df: pl.DataFrame | None = None) -> pl.DataFrame:
+        """Forecasts for every row of `panel_df`, plus for `apply_df` rows.
+
+        `apply_df` rows (same columns) are scored with the pooled coefficients
+        but never enter the fit — that is how the SPX forecast is produced
+        from the single-name regression.
+        """
         cfg = self.config
         features = [f"rv_{w}" for w in cfg.windows]
+        panel_df = panel_df.with_columns(pl.lit(True).alias("in_fit"))
+        if apply_df is not None:
+            panel_df = pl.concat([panel_df, apply_df.select(panel_df.columns[:-1]).with_columns(pl.lit(False).alias("in_fit"))])
         clean = (
             panel_df.filter(
                 pl.all_horizontal([pl.col(f) > 0 for f in features]),
@@ -179,7 +190,7 @@ class HARForecaster(RealizedVolForecaster):
                 if cutoff_index < 0:
                     continue
                 cutoff = sessions[cutoff_index]
-                train = clean.filter(pl.col("date") <= cutoff, pl.col("y").is_not_null())
+                train = clean.filter(pl.col("date") <= cutoff, pl.col("y").is_not_null(), pl.col("in_fit"))
                 if train.height < cfg.min_fit_rows:
                     continue
                 design = np.column_stack([np.ones(train.height), train.select(x_cols).to_numpy()])

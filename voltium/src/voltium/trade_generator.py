@@ -113,6 +113,15 @@ class TradeGenerator:
         targets = dict(zip(targets_df["symbol"].to_list(), targets_df["target_vega"].to_list()))
         for symbol in portfolio.symbols():
             targets.setdefault(symbol, 0.0)
+        # An optional `target_contracts` column bypasses the vega rounding; the
+        # reference-path builder uses it to hold exactly one contract.
+        fixed_contracts: dict[str, int] = {}
+        if "target_contracts" in targets_df.columns:
+            fixed_contracts = {
+                s: int(c)
+                for s, c in zip(targets_df["symbol"].to_list(), targets_df["target_contracts"].to_list())
+                if c is not None
+            }
 
         trades: list[Trade] = []
         for symbol in sorted(targets):
@@ -127,7 +136,9 @@ class TradeGenerator:
                 unit = position.unit
                 current = position.contracts
             else:
-                if quotes_df is None or quotes_df.is_empty() or target_vega == 0.0:
+                if quotes_df is None or quotes_df.is_empty():
+                    continue
+                if target_vega == 0.0 and symbol not in fixed_contracts:
                     continue
                 unit = self.instrument.select(quotes_df, date_)
                 if unit is None:
@@ -140,7 +151,7 @@ class TradeGenerator:
             unit_vega = mark.vega * CONTRACT_MULTIPLIER
             if unit_vega <= 0:
                 continue
-            target_contracts = int(round(target_vega / unit_vega))
+            target_contracts = fixed_contracts.get(symbol, int(round(target_vega / unit_vega)))
             if self.config.max_contracts is not None:
                 target_contracts = max(-self.config.max_contracts, min(self.config.max_contracts, target_contracts))
             change = target_contracts - current
