@@ -41,6 +41,9 @@ load_dotenv()
 
 INDEX_ROOTS = ["SPX", "SPXW", "XSP", "VIX"]
 BAR_START, BAR_END = "15:59:00", "16:00:00"
+# Half-day sessions (day after Thanksgiving, Christmas Eve, July 3) close at
+# 13:00 and have no 15:59 bar; the last bar before the early close is used.
+HALF_DAY_START, HALF_DAY_END = "12:59:00", "13:00:00"
 CHECKPOINT_EVERY = 200
 
 # Columns the 15:59 first-order bar can replace, and the ones it cannot,
@@ -72,15 +75,20 @@ def find_unquoted_sessions(chain_df: pl.DataFrame, threshold: float) -> list[dat
 
 def fetch_bar(root: str, session: date, expiration: str) -> pl.DataFrame:
     client = make_client()
-    try:
-        bar = client.option_history_greeks_first_order(
-            root, date.fromisoformat(expiration), interval="1h", date=session,
-            start_time=BAR_START, end_time=BAR_END,
-        )
-    except Exception as error:
-        if "NoDataFound" in type(error).__name__ or "NOT_FOUND" in str(error):
-            return pl.DataFrame()
-        raise
+    bar = pl.DataFrame()
+    for start, end in ((BAR_START, BAR_END), (HALF_DAY_START, HALF_DAY_END)):
+        try:
+            bar = client.option_history_greeks_first_order(
+                root, date.fromisoformat(expiration), interval="1h", date=session,
+                start_time=start, end_time=end,
+            )
+        except Exception as error:
+            if "NoDataFound" in type(error).__name__ or "NOT_FOUND" in str(error):
+                bar = pl.DataFrame()
+            else:
+                raise
+        if not bar.is_empty():
+            break
     if bar.is_empty():
         return bar
     # One bar was asked for; keep the last in case the server returns two.
