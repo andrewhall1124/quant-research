@@ -168,11 +168,25 @@ gross short cap $10k, λ = 1e-5, turnover 0.10/$vega, jump penalty 1.0). The
 demo prints `summary()`, the factor regression and the 60-session decile
 table and writes `demos/figures/`. See `demos/level_book.log` for the last run.
 
-Read the numbers as a demonstration of the machinery, not of an edge: the
-default costs are conservative (crossing the full half-spread on EOD quotes
-of single-name straddles is expensive, a few vol points of vega per round
-trip), and the myopic optimizer turns the book over faster than a 30-session
-signal horizon warrants.
+Last run (2025-01-02 to 2025-06-30, 533 names, 122 sessions, 16 min cold):
+
+| | |
+| --- | --- |
+| mean positions / gross vega | 35 / $10.9k per vol point |
+| gross P&L / costs / net | +$141k / $613k / -$472k |
+| annual turnover / gross vega | 33x |
+| decile 1 vs 10 forward 60-session gross P&L per $ vega | 5.1 vs 3.3 (t 5.7 vs 3.8) |
+| net P&L loading on market vol factor | -0.09 (t -1.1); intercept -0.31/day (t -3.5) |
+
+Read this as a demonstration of the machinery, not of an edge. The gross
+decile spread has the expected sign but is small, and the book is dominated
+by costs: crossing the full half-spread on EOD single-name straddle quotes is
+a few vol points of vega per round trip, a 10% re-strike band rolls a
+30-vol name every few weeks in a year like 2025, and a myopic weekly MVO
+turns the book over far faster than a 30-session signal warrants. The
+levers are all config: `HalfSpreadCost(fraction=0.5)`,
+`StraddleConfig(restrike_moneyness=0.15)`, `TurnoverPenalty`, the no-trade
+`band`, and `rebalance="weekly"` with a longer signal smoothing.
 
 ## Known v1 limitations
 
