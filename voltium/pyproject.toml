@@ -1,0 +1,27 @@
+[project]
+name = "voltium"
+version = "0.1.0"
+description = "Options-volatility backtesting framework: single-name vol level book on delta-hedged ATM straddles."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "polars>=1.30",
+    "numpy>=2.0",
+    "cvxpy>=1.6",
+    "clarabel>=0.9",
+    "scipy>=1.14",
+    "matplotlib>=3.9",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/voltium"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
