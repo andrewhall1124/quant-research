@@ -26,6 +26,7 @@ from data_access_layer import paths
 from data_pipelines import (
     corporate_actions_pipeline,
     earnings_pipeline,
+    index_repair_pipeline,
     open_interest_pipeline,
     option_greeks_pipeline,
     reference_pipeline,
@@ -44,6 +45,7 @@ PIPELINES = {
     "underlying": underlying_pipeline,
     "option-greeks": option_greeks_pipeline,
     "open-interest": open_interest_pipeline,
+    "index-repair": index_repair_pipeline,
     "symbology": symbology_pipeline,
 }
 
@@ -116,6 +118,10 @@ def build_plan() -> list[tuple[str, list[str]]]:
                 "--workers", "4",
             ],
         ))
+
+    # The EOD endpoint leaves index sessions unquoted, mostly 2020-2021;
+    # splice in the 15:59 intraday bar. Reads the index files it repairs.
+    steps.append(("index quote repair (all years)", ["index-repair"]))
 
     # Last, because it reads the chains rather than pulling any: which
     # symbol-years are the company the universe names.

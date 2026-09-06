@@ -167,6 +167,16 @@ in [quality.py](quality.py) is where a verdict is overturned by hand for the
 cases where the *reference* is wrong rather than the data (2017 COL is genuinely
 Rockwell Collins; Yahoo's modern COL is an unrelated shell).
 
+**Index sessions repaired from the 15:59 bar carry no second-order greeks.**
+The EOD greeks endpoint returned zero bids and asks for SPX, SPXW, XSP and
+VIX on about 340 sessions, most of them in 2020–2021, and a fresh EOD pull
+gives the same. `data_pipelines.cli index-repair` splices in the 15:59
+intraday bar: bid, ask, IV, `iv_error`, delta, theta, vega, rho and the
+underlying price are replaced, and `gamma` through `dual_gamma` are null on
+those rows because the vendor computed them from empty quotes. Their
+`underlying_timestamp` reads 15:59 rather than the close. The untouched
+originals sit beside the files as `<ROOT>.parquet.orig`.
+
 **`corporate_action_symbol_years()` is a separate warning.** Those 60
 symbol-years hold a day the vendors disagree about by more than 5% — usually an
 unadjusted spinoff. The symbol is right; the return on that one day is not.
