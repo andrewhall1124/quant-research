@@ -24,7 +24,7 @@ import polars as pl
 
 import data_access_layer as dal
 from research.goyal_saretto.panel import (
-    PANEL_PATH, build_calendar, build_schedule, compute_spot_history, is_clean_quote, has_valid_iv,
+    PANEL_PATH, build_calendar, build_schedule, compute_spot_history, has_valid_iv,
 )
 
 STUDY_DIR = Path(__file__).resolve().parent
@@ -88,14 +88,23 @@ def extract_realized(symbol: str, contracts_df: pl.DataFrame, index: bool = Fals
     return pl.DataFrame(pieces)
 
 
-def build_spx_panel(schedule_df: pl.DataFrame) -> pl.DataFrame:
-    """SPX monthly ATM straddles on the same calendar as the stock panel.
+def is_quoted(side: str) -> pl.Expr:
+    return (pl.col(f"{side}_bid") > 0) & (pl.col(f"{side}_ask") > pl.col(f"{side}_bid"))
+
+
+def build_spx_panel(schedule_df: pl.DataFrame, root: str = "SPX") -> pl.DataFrame:
+    """Index monthly ATM straddles on the same calendar as the stock panel.
 
     SPX monthlies settle on the opening prints of the third Friday; the payoff
     here uses the chain's spot on the expiry date, which is the close. That
-    is a known approximation and the report says so.
+    is a known approximation and the report says so. `root` may also be
+    SPXW or XSP, whose third-Friday expiries settle on the close.
+
+    Index quotes are firm market-maker quotes, so the stock panel's
+    volume-on-both-legs screen is dropped here: a quoted, inverted contract
+    is tradable whether or not it printed that day.
     """
-    chain = dal.load_option_greeks("SPX", index=True, lazy=True)
+    chain = dal.load_option_greeks(root, index=True, lazy=True)
     days = pl.concat([schedule_df["previous_day"], schedule_df["formation_day"], schedule_df["entry_day"]]).unique()
     quotes = (
         chain.select("date", "expiration", "strike", "right", "bid", "ask", "volume", "delta",
@@ -117,7 +126,7 @@ def build_spx_panel(schedule_df: pl.DataFrame) -> pl.DataFrame:
     formation = (
         quotes.join(schedule_df.select("month", pl.col("formation_day").alias("date"), "expiration", "entry_day"),
                     on=["date", "expiration"], how="inner")
-        .filter(is_clean_quote("call"), is_clean_quote("put"), has_valid_iv("call"), has_valid_iv("put"))
+        .filter(is_quoted("call"), is_quoted("put"), has_valid_iv("call"), has_valid_iv("put"))
         .sort("month", (pl.col("moneyness") - 1).abs())
         .group_by("month", maintain_order=True).first()
         .select("month", pl.col("date").alias("formation_day"), "entry_day", "expiration", "strike",
@@ -131,10 +140,10 @@ def build_spx_panel(schedule_df: pl.DataFrame) -> pl.DataFrame:
     expiry_spot = spot_df.select(pl.col("date").alias("expiration"), pl.col("spot").alias("spot_at_expiry"))
     return (
         formation.join(entry, on=["entry_day", "expiration", "strike"], how="inner")
-        .filter(is_clean_quote("call"), is_clean_quote("put"))
+        .filter(is_quoted("call"), is_quoted("put"))
         .join(expiry_spot, on="expiration", how="inner")
         .with_columns(
-            pl.lit("SPX").alias("symbol"),
+            pl.lit(root).alias("symbol"),
             ((pl.col("call_bid") + pl.col("call_ask")) / 2).alias("call_mid"),
             ((pl.col("put_bid") + pl.col("put_ask")) / 2).alias("put_mid"),
             (pl.col("spot_at_expiry") - pl.col("strike")).clip(lower_bound=0).alias("call_payoff"),
