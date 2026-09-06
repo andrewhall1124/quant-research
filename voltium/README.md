@@ -183,16 +183,16 @@ gross short cap $10k, λ = 1e-5, turnover 0.10/$vega, jump penalty 1.0). The
 demo prints `summary()`, the factor regression and the 60-session decile
 table and writes `demos/figures/`. See `demos/level_book.log` for the last run.
 
-Last run (2025-01-02 to 2025-06-30, 533 names, 122 sessions, 16 min cold,
-full half-spread paid, 15% re-strike band):
+Last run (2025-01-02 to 2025-06-30, 533 names, 122 sessions, 12 min on the
+stored risk model, full half-spread paid, 15% re-strike band):
 
 | | |
 | --- | --- |
 | mean positions / gross vega | 37 / $10.5k per vol point |
-| gross P&L / costs / net | +$74k / $538k / -$464k |
+| gross P&L / costs / net | +$54k / $534k / -$480k |
 | annual turnover / gross vega | 37x |
-| decile 1 vs 10 forward 60-session gross P&L per $ vega | 4.2 vs 3.7 (t 4.8 vs 4.6) |
-| net P&L loading on market vol factor | -0.06 (t -0.5); intercept -0.32/day (t -2.8) |
+| decile 1 vs 10 forward 60-session gross P&L per $ vega | 4.1 vs 3.8 (t 4.7 vs 4.7) |
+| net P&L loading on market vol factor | +0.02 (t 0.2); intercept -0.33/day (t -2.5) |
 
 Read this as a demonstration of the machinery, not of an edge. The gross
 decile spread has the expected sign but is small, and the book is dominated
