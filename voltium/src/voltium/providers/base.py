@@ -12,10 +12,14 @@ per subclass and documented there.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from pathlib import Path
 
 import polars as pl
+
+log = logging.getLogger(__name__)
 
 
 class Provider(ABC):
@@ -59,3 +63,41 @@ def materialize(frame: pl.LazyFrame, cache_path: Path | None = None, refresh: bo
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         panel_df.write_parquet(cache_path)
     return panel_df
+
+
+def materialize_by_symbol(
+    build: Callable[[str], pl.LazyFrame],
+    symbols: list[str],
+    cache_dir: Path | None = None,
+    tag: str = "",
+    refresh: bool = False,
+    schema: dict | None = None,
+) -> pl.DataFrame:
+    """Collect a per-symbol lazy panel one symbol at a time and concatenate.
+
+    One query over 500 symbol-year files by eight years is a single
+    streaming plan that can hold tens of gigabytes in flight; one symbol's
+    chain is ~100k rows a year. Each symbol is collected on its own (and
+    cached under `cache_dir/<symbol>_<tag>.parquet` when given), so memory
+    is bounded by the largest single chain. `build(symbol)` returns the lazy
+    frame for that symbol; a `FileNotFoundError` skips it.
+    """
+    pieces = []
+    for count, symbol in enumerate(symbols, 1):
+        cache_path = cache_dir / f"{symbol}_{tag}.parquet" if cache_dir else None
+        if cache_path is not None and cache_path.exists() and not refresh:
+            pieces.append(pl.read_parquet(cache_path))
+            continue
+        try:
+            panel_df = build(symbol).collect()
+        except FileNotFoundError:
+            continue
+        if cache_path is not None:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            panel_df.write_parquet(cache_path)
+        pieces.append(panel_df)
+        if count % 100 == 0 or count == len(symbols):
+            log.info("materialize: %d/%d symbols", count, len(symbols))
+    if not pieces:
+        return pl.DataFrame(schema=schema)
+    return pl.concat(pieces)

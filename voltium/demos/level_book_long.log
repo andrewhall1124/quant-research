@@ -1,0 +1,3 @@
+15:36:20 level_book 659 symbols, history from 2017-04-24, forward to 2025-10-08
+15:36:21 level_book reference paths: 1067053 rows (1s)
+15:36:21 voltium.loaders vega convention for /Users/andrew/Projects/quant-research/data_store/option_greeks_2017/A.parquet: per_1.00_iv (per-unit share 1.00, per-point share 0.00, median dP/vega ratio 0.0100, theta/day share 1.00)

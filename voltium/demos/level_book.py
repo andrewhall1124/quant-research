@@ -47,7 +47,7 @@ from voltium.optimizer.mvo import MVO
 from voltium.optimizer.objectives import JumpPenalty, MaxUtility, TurnoverPenalty
 from voltium.optimizer.strategy import OptimizationStrategy
 from voltium.providers.alphas import AlphaConfig, ICScaledAlpha
-from voltium.providers.base import PanelProvider, materialize
+from voltium.providers.base import PanelProvider, materialize_by_symbol
 from voltium.providers.calendar import TradingCalendar
 from voltium.providers.chain import StoreChainProvider
 from voltium.providers.realized_vol import (
@@ -58,7 +58,7 @@ from voltium.providers.realized_vol import (
     compute_realized_vol_panel,
 )
 from voltium.providers.signals import CrossSectionalVRPSignal, SignalConfig, SignalProvider
-from voltium.providers.stock_features import StockFeaturesProvider, load_spx_closes
+from voltium.providers.stock_features import StockFeaturesProvider, compute_stock_features, load_spx_closes
 from voltium.providers.straddle_returns import StoredStraddleReturns, StraddleReturnsProvider
 from voltium.providers.surface import SurfaceConfig, build_surface_panel
 from voltium.providers.universe import PointInTimeUniverse, StaticSectorProvider
@@ -179,11 +179,13 @@ def build_panels(args: argparse.Namespace) -> Panels:
         spx_reference = StoredStraddleReturns(paths, ["SPX"], history_start, forward_end)
     log.info("reference paths: %d rows (%.0fs)", reference.panel_df.height, time.time() - started)
 
-    surface_df = materialize(
-        build_surface_panel(scan_options(paths, symbols, history_start, forward_end, with_oi=False), SurfaceConfig()),
-        CACHE_DIR / f"surface_{history_start}_{forward_end}.parquet",
+    surface_df = materialize_by_symbol(
+        lambda symbol: build_surface_panel(scan_options(paths, [symbol], history_start, forward_end, with_oi=False), SurfaceConfig()),
+        symbols,
+        CACHE_DIR / "surface",
+        tag=f"{history_start}_{forward_end}",
         refresh=args.refresh,
-    )
+    ).sort("date", "symbol")
     spx_surface_df = build_surface_panel(
         scan_options(paths, ["SPX"], history_start, forward_end, index=True, with_oi=False), SurfaceConfig()
     ).collect()
@@ -192,11 +194,13 @@ def build_panels(args: argparse.Namespace) -> Panels:
     if args.rv_source == "close":
         # as far back as the calendar goes, so the HAR has the most history to fit on
         stock_start = calendar.sessions[0]
-        rv_df = materialize(
-            compute_close_to_close_panel(scan_spot_from_chains(paths, symbols, stock_start, forward_end)),
-            CACHE_DIR / f"rv_close_{stock_start}_{forward_end}.parquet",
+        rv_df = materialize_by_symbol(
+            lambda symbol: compute_close_to_close_panel(scan_spot_from_chains(paths, [symbol], stock_start, forward_end)),
+            symbols,
+            CACHE_DIR / "rv_close",
+            tag=f"{stock_start}_{forward_end}",
             refresh=args.refresh,
-        )
+        ).sort("symbol", "date")
         spx_rv_df = compute_close_to_close_panel(
             scan_spot_from_chains(paths, ["SPX"], stock_start, forward_end, index=True, with_splits=False)
         ).collect()
@@ -209,7 +213,14 @@ def build_panels(args: argparse.Namespace) -> Panels:
     forecast_df = forecast_df.filter(pl.col("symbol") != "SPX")
     log.info("HAR: %d forecasts, last fit %s (%.0fs)", forecast_df.height, forecaster.coefficients_df.tail(1).to_dicts(), time.time() - started)
 
-    features = StockFeaturesProvider.from_store(paths, symbols, stock_start, forward_end, source=args.rv_source)
+    if args.rv_source == "close":
+        spot_df = materialize_by_symbol(
+            lambda symbol: scan_spot_from_chains(paths, [symbol], stock_start, forward_end),
+            symbols, CACHE_DIR / "spot", tag=f"{stock_start}_{forward_end}", refresh=args.refresh,
+        )
+        features = StockFeaturesProvider(compute_stock_features(spot_df.lazy(), load_spx_closes(paths, stock_start, forward_end)).collect())
+    else:
+        features = StockFeaturesProvider.from_store(paths, symbols, stock_start, forward_end)
     market_return_df = load_spx_closes(paths, history_start, forward_end)
 
     spec = FactorSpec(market_source="spx", use_sectors=True, window=250, min_observations=120)
