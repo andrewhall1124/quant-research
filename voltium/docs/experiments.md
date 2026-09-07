@@ -60,6 +60,47 @@ spike sits inside every 60-session forward window), and the spreads are
 small. The time-series signal spreads over more names and churns less, so
 its costs are a third lower.
 
+### Research configuration: MVO against the rank book
+
+The demos' defaults changed on 2026-09-07 to the research configuration:
+no costs, no liquidity screens, fractional contracts, no no-trade band, no
+jump penalty, and only `NetVegaNeutral($500)` and `GrossVegaCap($20k)` on
+the optimizer. `--strategy rank` replaces the optimizer with
+`RankWeightedStrategy` (dollar vega proportional to centred rank, no risk
+model). All four books, same 122 sessions, stored risk model:
+
+| | VRP, MVO | VRP, rank | IV z, MVO | IV z, rank |
+| --- | --- | --- | --- | --- |
+| mean positions / gross vega | 493 / $19.6k | 493 / $19.8k | 497 / $19.7k | 495 / $19.8k |
+| gross P&L | +$140k | +$80k | +$324k | +$171k |
+| annualised gross P&L per $ gross vega | 14.8 | 8.4 | 33.9 | 17.9 |
+| Sharpe (gross) | 1.02 | 2.35 | 2.29 | 3.74 |
+| max drawdown | -$98k | -$28k | -$106k | -$30k |
+| annual turnover / gross vega | 45x | 52x | 46x | 59x |
+| P&L loading on market vol factor (t) | +0.15 (2.1) | +0.05 (2.8) | -0.07 (-0.8) | -0.06 (-2.7) |
+| intercept, P&L per $ gross vega per day (t) | 0.07 (0.8) | 0.04 (1.8) | 0.07 (0.8) | 0.06 (2.2) |
+
+**What it says.** With every name tradeable and the gross cap the only
+sizing constraint, the book holds the whole universe and sits at the cap.
+Both signals are positive gross over the window; the IV z-score earns
+about twice the VRP under either sizer, consistent with the six-month
+decile tables (the seven-year tables below reverse that ordering). The
+MVO books earn roughly twice the dollars of the rank books with three
+times the drawdown: without the per-name cap, the optimizer concentrates
+where alpha is large and idio vol is small, and that concentration is what
+the drawdown measures. The rank books' Sharpe is higher in both cases, so
+on this window the risk model is buying return, not risk-adjusted return.
+The MVO VRP book also carries a significant long market-vol loading
+(+0.15, t 2.1) that the dropped `FactorNeutral` constraint used to remove.
+
+**What it does not say.** Six months and 122 sessions is too short for
+the intercepts to be significant (t 0.8–2.2), and the MVO-versus-rank gap
+is one sample. Turnover is 45–60x gross vega a year in every book, higher
+than under the screened configuration (30–38x) because fractional
+contracts and no band mean every rebalance trades every name. Any cost
+model will dominate at that cadence; the comparison to make next is the
+same four books over seven years, then the same four with `--costs`.
+
 ## Seven years, 2018-07-02 to 2025-06-30, 659 names, close-to-close realized vol
 
 The stock file starts mid-2023, so realized vol, the HAR and the stock

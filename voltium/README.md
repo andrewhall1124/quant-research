@@ -201,9 +201,30 @@ short cap $10k). Each prints `summary()`, the factor regression and the
 60-session decile table, and writes `demos/figures/*_<tag>.png`; the last
 logs are `demos/*_book.log`.
 
-The table below is from the earlier *tradeable* configuration (costs,
-screens, full constraints, jump penalty 1.0), i.e. today's
-`--costs --screens --full-constraints --jump-penalty 1`:
+Research configuration, 2025-01-02 to 2025-06-30, 122 sessions, gross vega
+$20k, no costs (logs: `demos/<signal>_book_<strategy>.log`):
+
+| | VRP, MVO | VRP, rank | IV z, MVO | IV z, rank |
+| --- | --- | --- | --- | --- |
+| mean positions / gross vega | 493 / $19.6k | 493 / $19.8k | 497 / $19.7k | 495 / $19.8k |
+| gross P&L | +$140k | +$80k | +$324k | +$171k |
+| annualised gross P&L per $ gross vega | 14.8 | 8.4 | 33.9 | 17.9 |
+| Sharpe (gross) | 1.02 | 2.35 | 2.29 | 3.74 |
+| max drawdown | -$98k | -$28k | -$106k | -$30k |
+| annual turnover / gross vega | 45x | 52x | 46x | 59x |
+| P&L loading on market vol factor (t) | +0.15 (2.1) | +0.05 (2.8) | -0.07 (-0.8) | -0.06 (-2.7) |
+| intercept, P&L per $ gross vega per day (t) | 0.07 (0.8) | 0.04 (1.8) | 0.07 (0.8) | 0.06 (2.2) |
+
+The decile tables are unchanged by the strategy (they are a property of the
+signal): VRP 4.4 vs 4.0 (t 5.1 / 4.9) for deciles 1 vs 10, IV z 4.9 vs 4.5
+(t 6.4 / 5.2). Every book is positive gross over the half year; the rank
+books earn roughly half the dollars of the MVO books with a third of the
+drawdown, so the optimizer is adding return but not risk-adjusted return
+on this window. Turnover is 45–60x gross vega a year in every case, which
+is why the tradeable configuration below is cost-dominated.
+
+The earlier *tradeable* configuration (costs, screens, full constraints,
+jump penalty 1.0), i.e. today's `--costs --screens --full-constraints --jump-penalty 1`:
 
 | | VRP book | IV z-score book |
 | --- | --- | --- |
