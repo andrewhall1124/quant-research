@@ -15,6 +15,14 @@ Outputs are suffixed `_vrp`; `iv_zscore_book.py` reuses `build_panels` and
 builds itself instead of reading the stored tables; that is the path for an
 instrument that has not been pipelined.
 
+The defaults are the *research* configuration: no transaction costs, no
+liquidity screens, fractional contracts, no no-trade band, no jump penalty,
+and only the net-vega-neutral and gross-vega constraints on the optimizer.
+That shows what the signal earns before asking whether it could be traded.
+`--costs`, `--screens`, `--full-constraints` and `--jump-penalty` switch the
+tradeability checks back on one at a time; `--strategy rank` replaces the
+optimizer with a rank-weighted book that uses no risk model at all.
+
 The dates default to the first half of 2025 because that is where every
 input exists at once: the stock tier (and so realized vol) starts mid-2023,
 the HAR needs a year of fits behind it, and the risk model needs 250
@@ -67,6 +75,7 @@ from voltium.risk_model.base import RiskModelConstructor
 from voltium.risk_model.constructor import FactorRiskModelConstructor
 from voltium.risk_model.spec import FactorSpec
 from voltium.risk_model.store import StoredFactorRiskModelConstructor
+from voltium.strategy import RankWeightedStrategy, Strategy
 from voltium.trade_generator import TradeGenerator, TradeGeneratorConfig
 from voltium.loaders import scan_options, scan_spot_from_chains, scan_stocks
 
@@ -87,7 +96,6 @@ RISK_AVERSION = 1e-5
 # period that is ~0.1 per session, the scale of a daily alpha. The optimizer
 # is myopic, so the penalty has to be quoted per session, not per trade.
 TURNOVER_COST = 0.10
-JUMP_PENALTY = 1.0
 
 
 def build_spx_indices_rv(paths: DataPaths, start: dt.date, end: dt.date) -> pl.DataFrame:
@@ -135,6 +143,11 @@ def build_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--refresh", action="store_true", help="rebuild cached panels")
     parser.add_argument("--limit", type=int, default=None, help="use only the first N symbols (smoke test)")
     parser.add_argument("--in-process", action="store_true", help="estimate the risk model here instead of reading the store")
+    parser.add_argument("--strategy", default="mvo", choices=["mvo", "rank"], help="CVXPY mean-variance book, or centred-rank weights with no risk model")
+    parser.add_argument("--costs", action="store_true", help="charge the half-spread on options and $0.005/share on the hedge (default: no costs)")
+    parser.add_argument("--screens", action="store_true", help="integer contracts, max-spread and min-OI screens, 10%% no-trade band (default: none)")
+    parser.add_argument("--full-constraints", action="store_true", help="add factor neutrality, the per-name cap and the gross short cap to the optimizer")
+    parser.add_argument("--jump-penalty", type=float, default=0.0, help="J for the short-vega gap penalty; 0 leaves the term out")
     parser.add_argument(
         "--rv-source",
         default="ohlc",
@@ -259,35 +272,41 @@ def build_vrp_signal(panels: Panels) -> CrossSectionalVRPSignal:
     return signal
 
 
+def build_strategy(args: argparse.Namespace, panels: Panels, signal: SignalProvider) -> Strategy:
+    """`--strategy rank`: centred-rank dollar vega, no risk model. `mvo`: alpha -> CVXPY."""
+    if args.strategy == "rank":
+        return RankWeightedStrategy(signal, GROSS_VEGA, universe=panels.universe)
+    alphas = ICScaledAlpha(signal, panels.risk_model_constructor, AlphaConfig(ic=0.04))
+    objectives = [MaxUtility(RISK_AVERSION), TurnoverPenalty(TURNOVER_COST)]
+    if args.jump_penalty > 0:
+        objectives.append(JumpPenalty(args.jump_penalty))
+    constraints = [NetVegaNeutral(NET_VEGA_TOL), GrossVegaCap(GROSS_VEGA)]
+    if args.full_constraints:
+        constraints += [FactorNeutral(FACTOR_EPS), PerNameVegaCap(PER_NAME_CAP), GrossShortVegaCap(GROSS_SHORT_CAP)]
+    optimizer = MVO(objectives=objectives, constraints=constraints)
+    return OptimizationStrategy(alphas, panels.risk_model_constructor, optimizer, universe=panels.universe, gap_freq=panels.features)
+
+
 def run_book(args: argparse.Namespace, panels: Panels, signal: SignalProvider, tag: str) -> None:
     """Optimise, backtest and report one signal; outputs are suffixed with `tag`."""
     paths, calendar, instrument, started = panels.paths, panels.calendar, panels.instrument, panels.started
     risk_model_constructor = panels.risk_model_constructor
-    alphas = ICScaledAlpha(signal, risk_model_constructor, AlphaConfig(ic=0.04))
-
-    # --- book ---------------------------------------------------------------
-    optimizer = MVO(
-        objectives=[MaxUtility(RISK_AVERSION), TurnoverPenalty(TURNOVER_COST), JumpPenalty(JUMP_PENALTY)],
-        constraints=[
-            NetVegaNeutral(NET_VEGA_TOL),
-            FactorNeutral(FACTOR_EPS),
-            PerNameVegaCap(PER_NAME_CAP),
-            GrossShortVegaCap(GROSS_SHORT_CAP),
-            GrossVegaCap(GROSS_VEGA),
-        ],
-    )
-    strategy = OptimizationStrategy(alphas, risk_model_constructor, optimizer, universe=panels.universe, gap_freq=panels.features)
+    strategy = build_strategy(args, panels, signal)
+    trade_config = TradeGeneratorConfig(max_spread=0.08, min_oi=100, band=0.10) if args.screens else TradeGeneratorConfig.research()
     backtester = Backtester(
         calendar=calendar,
         chain=StoreChainProvider(paths, panels.symbols),
         instrument=instrument,
         strategy=strategy,
-        trade_generator=TradeGenerator(instrument, TradeGeneratorConfig(max_spread=0.08, min_oi=100, band=0.10)),
+        trade_generator=TradeGenerator(instrument, trade_config),
         config=BacktestConfig(start=args.start, end=args.end, rebalance=args.rebalance),
-        option_cost=HalfSpreadCost(fraction=1.0),
-        hedge_cost=PerShareCost(0.005),
+        option_cost=HalfSpreadCost(fraction=1.0) if args.costs else None,
+        hedge_cost=PerShareCost(0.005) if args.costs else None,
     )
+    log.info("strategy=%s costs=%s screens=%s constraints=%s jump=%.2f", args.strategy, args.costs, args.screens,
+             "full" if args.full_constraints else "net+gross", args.jump_penalty)
     records_df, portfolio = backtester.run()
+    tag = f"{tag}_{args.strategy}"
     tag = f"{tag}_{args.start.year}_{args.end.year}" if args.rv_source == "close" else tag
     records_df.write_parquet(DEMO_DIR / f"records_{tag}.parquet")
     portfolio.save(DEMO_DIR / f"portfolio_{tag}.json")

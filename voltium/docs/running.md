@@ -43,7 +43,18 @@ Common flags (`build_parser` in `level_book.py`):
 | `--in-process` | off | estimate the risk model on the fly instead of reading the stored tables |
 | `--refresh` | off | rebuild the cached panels |
 | `--limit N` | | first N symbols (smoke test; the VRP signal needs ≥ 50 names to regress) |
+| `--strategy` | `mvo` | or `rank`: centred-rank dollar vega from the signal, no risk model, no optimizer |
+| `--costs` | off | charge the half-spread on every option fill and $0.005/share on the hedge |
+| `--screens` | off | integer contracts, max-spread 8% and min-OI 100 screens, 10% no-trade band |
+| `--full-constraints` | off | add factor neutrality, the $2k per-name cap and the $10k gross short cap |
+| `--jump-penalty J` | 0 | the short-vega gap penalty; 0 leaves the term out |
 | `--window` | 250 | `iv_zscore_book.py` only: the z-score window |
+
+The defaults are the **research configuration**: no costs, no screens,
+fractional contracts, net-vega-neutral and gross-vega constraints only.
+It answers "what does the signal earn" before "could it be traded"; the
+four switches turn the tradeability checks back on one at a time. The
+output tag carries the strategy (`records_vrp_mvo.parquet`, `_vrp_rank`).
 
 Each demo prints `summary()`, the factor regression and the decile table,
 writes `demos/records_<tag>.parquet` and `demos/portfolio_<tag>.json`, and

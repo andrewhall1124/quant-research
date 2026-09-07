@@ -1,4 +1,4 @@
-"""Target dollar vega -> integer straddle contracts, with liquidity screens.
+"""Target dollar vega -> straddle contracts, with liquidity screens.
 
 atium's `TradeGenerator` applies `TradingConstraint`s to a weight frame. The
 same shape is kept — a list of composable `TradingConstraint`s — but the
@@ -12,9 +12,14 @@ Order of operations per symbol:
    `Instrument.select`. A held series is never swapped outside a roll.
 2. Screen (opening or adding only): straddle spread `(ask - bid) / mid`
    above `max_spread`, or either leg's OI below `min_oi`, drops the name.
-3. Round `target_vega / unit_vega` to integer contracts.
+3. Round `target_vega / unit_vega` to integer contracts, or keep the
+   fraction when `fractional=True` (a research book that wants to see the
+   signal before lot sizes get in the way).
 4. No-trade band: skip if the dollar-vega change is under
    `band * |current dollar vega|`.
+
+`TradeGeneratorConfig.research()` is the screen-free, fractional, no-band
+configuration.
 """
 
 from __future__ import annotations
@@ -34,7 +39,7 @@ from voltium.portfolio import Portfolio
 class Trade:
     symbol: str
     unit: UnitSpec
-    contracts: int  # signed change in contracts
+    contracts: float  # signed change in contracts; integral unless `fractional`
     mark: UnitMark
     reason: str = "rebalance"
 
@@ -45,6 +50,12 @@ class TradeGeneratorConfig:
     min_oi: int = 100
     band: float = 0.10
     max_contracts: int | None = None
+    fractional: bool = False
+
+    @classmethod
+    def research(cls) -> "TradeGeneratorConfig":
+        """No liquidity screens, fractional contracts, no no-trade band."""
+        return cls(max_spread=float("inf"), min_oi=0, band=0.0, fractional=True)
 
 
 class TradingConstraint(ABC):
@@ -115,10 +126,10 @@ class TradeGenerator:
             targets.setdefault(symbol, 0.0)
         # An optional `target_contracts` column bypasses the vega rounding; the
         # reference-path builder uses it to hold exactly one contract.
-        fixed_contracts: dict[str, int] = {}
+        fixed_contracts: dict[str, float] = {}
         if "target_contracts" in targets_df.columns:
             fixed_contracts = {
-                s: int(c)
+                s: float(c)
                 for s, c in zip(targets_df["symbol"].to_list(), targets_df["target_contracts"].to_list())
                 if c is not None
             }
@@ -151,7 +162,8 @@ class TradeGenerator:
             unit_vega = mark.vega * CONTRACT_MULTIPLIER
             if unit_vega <= 0:
                 continue
-            target_contracts = fixed_contracts.get(symbol, int(round(target_vega / unit_vega)))
+            raw_contracts = target_vega / unit_vega if self.config.fractional else float(round(target_vega / unit_vega))
+            target_contracts = fixed_contracts.get(symbol, raw_contracts)
             if self.config.max_contracts is not None:
                 target_contracts = max(-self.config.max_contracts, min(self.config.max_contracts, target_contracts))
             change = target_contracts - current

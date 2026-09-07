@@ -69,12 +69,27 @@ Setting it to the actual round-trip cost (1.0) makes the book hold nothing.
 **J (`JumpPenalty.penalty`)**, per-vega P&L per session. `gap_freq` is
 around 0.016 on this store, so J = 1 charges a short position about 0.016
 per dollar of vega per session, a fifth of a typical daily alpha. It is a
-nudge away from selling vol in names that gap, not a hard rule.
+nudge away from selling vol in names that gap, not a hard rule. The demos
+leave it out unless `--jump-penalty J` is passed.
 
-**Caps.** The demos use gross $20k, per-name $2k, gross short $10k, net-vega
-tolerance $500, factor tolerance $1k. The gross cap is rarely reached because
-the trade generator's liquidity screens drop names after the optimizer has
-sized them; the book runs $10–12k gross.
+**Caps.** The demos' default optimizer carries only `NetVegaNeutral($500)`
+and `GrossVegaCap($20k)`; `--full-constraints` adds the $2k per-name cap,
+the $10k gross short cap and `FactorNeutral($1k)`. With the liquidity
+screens on, the gross cap is rarely reached because the trade generator
+drops names after the optimizer has sized them; the book runs $10–12k gross.
+
+## The rank-weighted alternative (`strategy.py: RankWeightedStrategy`)
+
+`ScoreStrategy` is the ABC both books share: eligibility (chain ∩ universe
+plus held names), a score per name from any `Provider`, then `size(date,
+scores_df, previous_df) -> (symbol, target_vega)`. `OptimizationStrategy`
+sizes with the risk model and the CVXPY problem above. `RankWeightedStrategy`
+sizes with no risk model: `w_i ∝ rank_i − mean rank` (`scheme="linear"`,
+net vega neutral by construction) or equal vega in the top and bottom
+`quantile` (`scheme="quantile"`), scaled so `Σ|w| = gross_vega`, shorting
+the high scores when `short_rich=True`. It is the control for the
+optimizer: if the MVO book does not beat it, the risk model is not earning
+its keep. `demos/level_book.py --strategy rank`.
 
 ## What the tests pin down (`tests/test_optimizer.py`)
 

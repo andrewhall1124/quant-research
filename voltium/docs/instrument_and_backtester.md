@@ -175,10 +175,16 @@ disappears and it goes stale.
 * `ReferenceUnitStrategy` — exactly one long contract in every symbol with a
   chain today, via an optional `target_contracts` column that bypasses the
   vega rounding. This is what builds the reference returns.
+* `ScoreStrategy(scores, score_column, universe)` — the ABC for every
+  signal-driven book: scores for today's eligible names (chain ∩ universe,
+  plus anything held so it can be unwound), the current book as
+  `previous_df`, then the abstract `size(date, scores_df, previous_df)`.
+  Held names the sizer leaves out become targets of zero.
+* `RankWeightedStrategy(signal, gross_vega, ...)` — centred-rank dollar
+  vega, no risk model. See [optimizer.md](optimizer.md).
 * `OptimizationStrategy(alpha_provider, risk_model_constructor, optimizer, universe, gap_freq)`
-  — alphas for today's eligible names (chain ∩ universe, plus anything held
-  so it can be unwound), the current book as `previous`, `gap_freq` from the
-  stock features, then `optimizer.optimize(...)`.
+  — `size` hands alphas, `previous_df`, the day's risk model and `gap_freq`
+  to `optimizer.optimize(...)`.
 
 ## What the tests pin down
 

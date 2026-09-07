@@ -27,7 +27,7 @@ loaders.py ──────────── canonical option / stock / unive
         │    optimizer/ ───────────────────── target dollar vega per symbol (CVXPY)
         │            │
         │            ▼
-        │    trade_generator.py ───────────── integer straddle contracts, screened
+        │    trade_generator.py ───────────── straddle contracts (integer or fractional), screened
         │            │
         └──► backtester.py ◄── instruments/straddle.py, costs.py, portfolio.py
                      │
@@ -73,7 +73,7 @@ src/voltium/
     constraints.py           NetVegaNeutral, FactorNeutral, PerNameVegaCap, GrossShortVegaCap, GrossVegaCap
     mvo.py                   MVO
     strategy.py              OptimizationStrategy
-  strategy.py                Strategy ABC; FixedTargetStrategy; ReferenceUnitStrategy
+  strategy.py                Strategy, ScoreStrategy ABCs; RankWeightedStrategy; FixedTargetStrategy; ReferenceUnitStrategy
   trade_generator.py         Trade, TradeGeneratorConfig, TradingConstraint ABC, MaxSpread, MinOpenInterest, TradeGenerator
   costs.py                   CostModel ABC; NoCost, HalfSpreadCost, PerShareCost
   portfolio.py               Position, Portfolio (JSON round-trip)

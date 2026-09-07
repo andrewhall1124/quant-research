@@ -110,8 +110,8 @@ optimizer/
   constraints.py           NetVegaNeutral, FactorNeutral, PerNameVegaCap, GrossShortVegaCap, GrossVegaCap
   mvo.py                   MVO (Clarabel); raises on non-optimal status
   strategy.py              OptimizationStrategy
-strategy.py                Strategy ABC, FixedTargetStrategy, ReferenceUnitStrategy
-trade_generator.py         target vega → integer contracts; MaxSpread, MinOpenInterest, no-trade band
+strategy.py                Strategy, ScoreStrategy ABCs; RankWeightedStrategy, FixedTargetStrategy, ReferenceUnitStrategy
+trade_generator.py         target vega → contracts (integer or fractional); MaxSpread, MinOpenInterest, no-trade band
 costs.py                   CostModel ABC; HalfSpreadCost (options), PerShareCost (hedge)
 portfolio.py               Portfolio / Position, JSON save & load
 backtester.py              the daily loop
@@ -190,12 +190,20 @@ Two books share every input except the signal:
   mean-reversion control with no forecast and no cross-sectional regression.
 
 Both run 2025-01-02 to 2025-06-30 on the full universe with the stored risk
-model, weekly rebalance, full half-spread paid on every option fill,
-$0.005/share on the hedge, and a 15% re-strike band. Knobs are at the top of
-`level_book.py` (gross vega budget $20k, per-name cap $2k, gross short cap
-$10k, λ = 1e-5, turnover 0.10/$vega, jump penalty 1.0). Each prints
-`summary()`, the factor regression and the 60-session decile table, and
-writes `demos/figures/*_<tag>.png`; the last logs are `demos/*_book.log`.
+model, weekly rebalance and a 15% re-strike band. The **default is the
+research configuration**: no costs, no liquidity screens, fractional
+contracts, and only the net-vega-neutral and gross-vega ($20k) constraints;
+`--costs`, `--screens`, `--full-constraints` and `--jump-penalty` restore
+the tradeability checks, and `--strategy rank` swaps the optimizer for a
+centred-rank book with no risk model. Knobs are at the top of
+`level_book.py` (λ = 1e-5, turnover 0.10/$vega, per-name cap $2k, gross
+short cap $10k). Each prints `summary()`, the factor regression and the
+60-session decile table, and writes `demos/figures/*_<tag>.png`; the last
+logs are `demos/*_book.log`.
+
+The table below is from the earlier *tradeable* configuration (costs,
+screens, full constraints, jump penalty 1.0), i.e. today's
+`--costs --screens --full-constraints --jump-penalty 1`:
 
 | | VRP book | IV z-score book |
 | --- | --- | --- |

@@ -25,7 +25,7 @@ class Position:
     """
 
     unit: UnitSpec
-    contracts: int
+    contracts: float  # integral unless the trade generator is fractional
     hedge_shares: float
     entry_date: dt.date
     last_mid: float
@@ -65,7 +65,7 @@ class Position:
         unit = UnitSpec(symbol=data["symbol"], legs=legs, ratios=tuple(data["ratios"]))
         return cls(
             unit=unit,
-            contracts=int(data["contracts"]),
+            contracts=float(data["contracts"]),
             hedge_shares=float(data["hedge_shares"]),
             entry_date=dt.date.fromisoformat(data["entry_date"]),
             last_mid=float(data["last_mid"]),

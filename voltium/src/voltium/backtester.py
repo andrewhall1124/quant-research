@@ -50,7 +50,7 @@ RECORD_SCHEMA = {
     "symbol": pl.Utf8,
     "expiration": pl.Date,
     "strike": pl.Float64,
-    "contracts": pl.Int64,
+    "contracts": pl.Float64,
     "hedge_shares": pl.Float64,
     "mid": pl.Float64,
     "underlying": pl.Float64,

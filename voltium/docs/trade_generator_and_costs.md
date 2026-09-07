@@ -3,8 +3,9 @@
 ## From dollar vega to contracts (`trade_generator.py`)
 
 ```python
-TradeGenerator(instrument, TradeGeneratorConfig(max_spread=0.08, min_oi=100, band=0.10, max_contracts=None),
+TradeGenerator(instrument, TradeGeneratorConfig(max_spread=0.08, min_oi=100, band=0.10, max_contracts=None, fractional=False),
                constraints=None)   # default: [MaxSpread(max_spread), MinOpenInterest(min_oi)]
+TradeGeneratorConfig.research()    # max_spread=inf, min_oi=0, band=0, fractional=True — the demos' default
 trades = generator.generate(targets_df, chain_by_symbol, marks, portfolio, date_)
 ```
 
@@ -56,7 +57,14 @@ class CostModel(ABC):
 `bid` and `ask` passed to the option model are the straddle's (sum of the
 legs'), so `fraction=1.0` pays the full half-spread on both legs, mid to
 touch. `fraction=0.5` is the usual "half-way fill" assumption. The demos
-pay the full half-spread.
+charge nothing unless `--costs` is passed, which pays the full half-spread.
+
+**Fractional contracts.** With `fractional=True` the target is
+`target_vega / unit_vega` unrounded, so every name hits its dollar-vega
+target exactly and `contracts` in the records and the `Portfolio` is a
+float. The default rounds to an integer as before. The rank-weighted book
+needs this: $20k of gross vega over 400 names is ~$50 a name, under one
+contract's vega for most of them.
 
 The backtester charges the option model on every contract traded and the
 hedge model on every share traded; `records_df.option_cost` and
