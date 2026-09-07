@@ -215,6 +215,33 @@ a third lower. The levers are all config: `TurnoverPenalty`, the no-trade
 `band`, `rebalance` and the signal smoothing, `StraddleConfig(restrike_moneyness,
 roll_dte)`, and `HalfSpreadCost(fraction)` if you ever want a half-way fill.
 
+### Longer history
+
+`--rv-source close` swaps the Yang-Zhang inputs for close-to-close realized
+vol computed off the chains' `underlying` column (`loaders.scan_spot_from_chains`,
+`compute_close_to_close_panel`), which reaches 2017; the size control is
+dropped because the chains carry no stock volume. Everything else already
+covered the whole option history. Panels are built one symbol at a time and
+cached per symbol under `voltium/.cache/`, so memory stays at one chain and
+a rerun skips the builds. Runtime is the per-session chain scan, ~6 s on the
+full universe, so seven years is ~3.5 hours per book.
+
+`level_book.py --rv-source close --start 2018-07-02 --end 2025-06-30`
+(659 names, 1,758 sessions; outputs tagged `_vrp_2018_2025`):
+
+| | |
+| --- | --- |
+| mean positions / gross vega | 41 / $12.0k |
+| gross P&L / costs / net | +$952k / $7.09M / -$6.13M |
+| annual turnover / gross vega | 30x |
+| net P&L loading on market vol factor (t) | -0.11 (-3.4) |
+| forward 60-session gross P&L per $ vega, deciles 1 → 10 | 2.04, 2.29, 2.34, 2.26, 2.23, 2.25, 2.01, 1.76, 1.69, 0.21 (t 6.5 … 0.7) |
+
+Over seven years the decile ordering is what the signal is built to find:
+long vol paid in every decile, fading from decile 6 up and collapsing in
+decile 10, the names the signal calls richest. The book still loses on
+costs for the reasons above.
+
 ## Known v1 limitations
 
 * **No earnings adjustment.** `NoOpEarningsAdjuster` is wired in where the
