@@ -226,21 +226,26 @@ cached per symbol under `voltium/.cache/`, so memory stays at one chain and
 a rerun skips the builds. Runtime is the per-session chain scan, ~6 s on the
 full universe, so seven years is ~3.5 hours per book.
 
-`level_book.py --rv-source close --start 2018-07-02 --end 2025-06-30`
-(659 names, 1,758 sessions; outputs tagged `_vrp_2018_2025`):
+Both books, `--rv-source close --start 2018-07-02 --end 2025-06-30`
+(659 names, 1,758 sessions; outputs tagged `_<signal>_2018_2025`):
 
-| | |
-| --- | --- |
-| mean positions / gross vega | 41 / $12.0k |
-| gross P&L / costs / net | +$952k / $7.09M / -$6.13M |
-| annual turnover / gross vega | 30x |
-| net P&L loading on market vol factor (t) | -0.11 (-3.4) |
-| forward 60-session gross P&L per $ vega, deciles 1 → 10 | 2.04, 2.29, 2.34, 2.26, 2.23, 2.25, 2.01, 1.76, 1.69, 0.21 (t 6.5 … 0.7) |
+| | VRP book | IV z-score book |
+| --- | --- | --- |
+| mean positions / gross vega | 41 / $12.0k | 58 / $12.3k |
+| gross P&L / costs / net | +$952k / $7.09M / -$6.13M | -$112k / $6.63M / -$6.74M |
+| annual turnover / gross vega | 30x | 25x |
+| net P&L loading on market vol factor (t) | -0.11 (-3.4) | -0.25 (-8.6) |
+| forward 60-session gross P&L per $ vega, deciles 1 → 10 | 2.04, 2.29, 2.34, 2.26, 2.23, 2.25, 2.01, 1.76, 1.69, **0.21** | **1.42**, 1.96, 2.00, 1.99, 1.95, 2.06, 2.19, 2.26, 2.15, **1.42** |
 
-Over seven years the decile ordering is what the signal is built to find:
+Over seven years the VRP deciles show what the signal is built to find:
 long vol paid in every decile, fading from decile 6 up and collapsing in
-decile 10, the names the signal calls richest. The book still loses on
-costs for the reasons above.
+decile 10, the names the signal calls richest (t 6.5 in decile 1, 0.7 in
+decile 10). The time-series z-score is U-shaped instead: its top decile is
+no worse than its bottom one, and the middle is best — high-for-itself IV
+is as often the start of a vol episode as the end of one, and the book that
+shorts it carries a significant short-vol tilt (market loading -0.25). Both
+books lose on costs for the reasons above; the VRP book is the one with a
+gross edge.
 
 ## Known v1 limitations
 

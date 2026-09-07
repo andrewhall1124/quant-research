@@ -1,0 +1,249 @@
+19:25:42 level_book 659 symbols, history from 2017-04-24, forward to 2025-10-08
+19:25:42 level_book reference paths: 1067053 rows (0s)
+19:25:43 voltium.loaders vega convention for /Users/andrew/Projects/quant-research/data_store/index_greeks_2017/SPX.parquet: per_1.00_iv (per-unit share 1.00, per-point share 0.00, median dP/vega ratio 0.0100, theta/day share 1.00)
+19:25:43 level_book surface: 1067345 rows (1s)
+19:25:45 level_book HAR: 1046279 forecasts, last fit [{'date': datetime.date(2025, 10, 1), 'rows': 1043953, 'const': -1.131449256807854, 'residual_var': 0.5294040664610805, 'b_rv_1': 0.025852336886258424, 'b_rv_5': 0.19588718583422726, 'b_rv_22': 0.8056671009823344}] (3s)
+19:25:46 voltium.loaders vega convention for /Users/andrew/Projects/quant-research/data_store/option_greeks_2018/A.parquet: per_1.00_iv (per-unit share 1.00, per-point share 0.00, median dP/vega ratio 0.0100, theta/day share 1.00)
+19:25:49 voltium.backtester 2018-07-02  positions=4  day pnl=-898  cum pnl=-898
+19:26:12 voltium.backtester 2018-07-17  positions=13  day pnl=170  cum pnl=-7793
+19:26:37 voltium.backtester 2018-07-31  positions=19  day pnl=5887  cum pnl=-15543
+19:27:02 voltium.backtester 2018-08-14  positions=29  day pnl=2495  cum pnl=-11112
+19:27:27 voltium.backtester 2018-08-28  positions=36  day pnl=11070  cum pnl=-10209
+19:27:53 voltium.backtester 2018-09-12  positions=38  day pnl=-6298  cum pnl=-52346
+19:28:17 voltium.backtester 2018-09-26  positions=39  day pnl=5852  cum pnl=-45023
+19:28:42 voltium.backtester 2018-10-10  positions=45  day pnl=-13476  cum pnl=-79378
+19:29:06 voltium.backtester 2018-10-24  positions=40  day pnl=-19717  cum pnl=-116570
+19:29:30 voltium.backtester 2018-11-07  positions=42  day pnl=-12286  cum pnl=-223797
+19:29:55 voltium.backtester 2018-11-21  positions=47  day pnl=-4874  cum pnl=-246457
+19:30:21 voltium.backtester 2018-12-07  positions=49  day pnl=373  cum pnl=-290079
+19:30:47 voltium.backtester 2018-12-21  positions=51  day pnl=-2872  cum pnl=-318058
+19:31:01 voltium.loaders vega convention for /Users/andrew/Projects/quant-research/data_store/option_greeks_2019/A.parquet: per_1.00_iv (per-unit share 1.00, per-point share 0.00, median dP/vega ratio 0.0100, theta/day share 1.00)
+19:31:19 voltium.backtester 2019-01-08  positions=48  day pnl=4475  cum pnl=-372607
+19:31:54 voltium.backtester 2019-01-23  positions=49  day pnl=-5355  cum pnl=-391256
+19:32:28 voltium.backtester 2019-02-06  positions=49  day pnl=-3760  cum pnl=-417364
+19:33:04 voltium.backtester 2019-02-21  positions=48  day pnl=1906  cum pnl=-461514
+19:33:38 voltium.backtester 2019-03-07  positions=46  day pnl=-3527  cum pnl=-555155
+19:34:14 voltium.backtester 2019-03-21  positions=49  day pnl=-19141  cum pnl=-569844
+19:34:48 voltium.backtester 2019-04-04  positions=56  day pnl=587  cum pnl=-632042
+19:35:24 voltium.backtester 2019-04-18  positions=57  day pnl=-890  cum pnl=-655753
+19:35:59 voltium.backtester 2019-05-03  positions=54  day pnl=-2824  cum pnl=-680292
+19:36:33 voltium.backtester 2019-05-17  positions=58  day pnl=10800  cum pnl=-654448
+19:37:08 voltium.backtester 2019-06-03  positions=59  day pnl=-8122  cum pnl=-728059
+19:37:43 voltium.backtester 2019-06-17  positions=63  day pnl=-618  cum pnl=-715939
+19:38:17 voltium.backtester 2019-07-01  positions=63  day pnl=-34495  cum pnl=-770983
+19:38:51 voltium.backtester 2019-07-16  positions=64  day pnl=-735  cum pnl=-780235
+19:39:25 voltium.backtester 2019-07-30  positions=60  day pnl=1162  cum pnl=-837481
+19:40:00 voltium.backtester 2019-08-13  positions=63  day pnl=-4247  cum pnl=-869805
+19:40:35 voltium.backtester 2019-08-27  positions=62  day pnl=-13330  cum pnl=-943393
+19:41:09 voltium.backtester 2019-09-11  positions=59  day pnl=-17765  cum pnl=-1015128
+19:41:44 voltium.backtester 2019-09-25  positions=59  day pnl=664  cum pnl=-1013796
+19:42:19 voltium.backtester 2019-10-09  positions=61  day pnl=4539  cum pnl=-1059228
+19:42:53 voltium.backtester 2019-10-23  positions=63  day pnl=-1205  cum pnl=-1058706
+19:43:27 voltium.backtester 2019-11-06  positions=60  day pnl=-3415  cum pnl=-1144494
+19:44:01 voltium.backtester 2019-11-20  positions=64  day pnl=-1939  cum pnl=-1199499
+19:44:35 voltium.backtester 2019-12-05  positions=65  day pnl=-1499  cum pnl=-1216051
+19:45:09 voltium.backtester 2019-12-19  positions=67  day pnl=-2907  cum pnl=-1241575
+19:45:33 voltium.loaders vega convention for /Users/andrew/Projects/quant-research/data_store/option_greeks_2020/A.parquet: per_1.00_iv (per-unit share 1.00, per-point share 0.00, median dP/vega ratio 0.0100, theta/day share 1.00)
+19:45:46 voltium.backtester 2020-01-06  positions=53  day pnl=-1464  cum pnl=-1294539
+19:46:26 voltium.backtester 2020-01-21  positions=54  day pnl=-5741  cum pnl=-1318313
+19:47:06 voltium.backtester 2020-02-04  positions=57  day pnl=-950  cum pnl=-1370470
+19:47:46 voltium.backtester 2020-02-19  positions=65  day pnl=7958  cum pnl=-1351637
+19:48:27 voltium.backtester 2020-03-04  positions=58  day pnl=28315  cum pnl=-1470631
+19:49:10 voltium.backtester 2020-03-18  positions=44  day pnl=-37464  cum pnl=-2050420
+19:49:50 voltium.backtester 2020-04-01  positions=39  day pnl=-7549  cum pnl=-2362815
+19:50:31 voltium.backtester 2020-04-16  positions=40  day pnl=-18549  cum pnl=-2487246
+19:51:12 voltium.backtester 2020-04-30  positions=50  day pnl=-3839  cum pnl=-2576126
+19:51:52 voltium.backtester 2020-05-14  positions=59  day pnl=-7275  cum pnl=-2606712
+19:52:32 voltium.backtester 2020-05-29  positions=65  day pnl=-4550  cum pnl=-2696877
+19:53:14 voltium.backtester 2020-06-12  positions=70  day pnl=-40355  cum pnl=-3119072
+19:53:56 voltium.backtester 2020-06-26  positions=73  day pnl=-12504  cum pnl=-3092312
+19:54:38 voltium.backtester 2020-07-13  positions=78  day pnl=4841  cum pnl=-3109502
+19:55:18 voltium.backtester 2020-07-27  positions=78  day pnl=-2965  cum pnl=-3056114
+19:55:59 voltium.backtester 2020-08-10  positions=79  day pnl=-6862  cum pnl=-3089847
+19:56:40 voltium.backtester 2020-08-24  positions=79  day pnl=-16369  cum pnl=-3064985
+19:57:21 voltium.backtester 2020-09-08  positions=77  day pnl=-1826  cum pnl=-3064953
+19:58:03 voltium.backtester 2020-09-22  positions=77  day pnl=2144  cum pnl=-3052285
+19:58:43 voltium.backtester 2020-10-06  positions=79  day pnl=1411  cum pnl=-3098044
+19:59:23 voltium.backtester 2020-10-20  positions=79  day pnl=179  cum pnl=-3090624
+20:00:05 voltium.backtester 2020-11-03  positions=80  day pnl=831  cum pnl=-3171613
+20:00:45 voltium.backtester 2020-11-17  positions=79  day pnl=-3232  cum pnl=-3279152
+20:01:26 voltium.backtester 2020-12-02  positions=81  day pnl=-2713  cum pnl=-3304665
+20:02:08 voltium.backtester 2020-12-16  positions=82  day pnl=1329  cum pnl=-3310382
+20:02:48 voltium.backtester 2020-12-31  positions=77  day pnl=4748  cum pnl=-3332814
+20:02:48 voltium.loaders vega convention for /Users/andrew/Projects/quant-research/data_store/option_greeks_2021/A.parquet: per_1.00_iv (per-unit share 1.00, per-point share 0.00, median dP/vega ratio 0.0100, theta/day share 1.00)
+20:03:31 voltium.backtester 2021-01-15  positions=65  day pnl=-3569  cum pnl=-3338530
+20:04:15 voltium.backtester 2021-02-01  positions=61  day pnl=-47708  cum pnl=-3365150
+20:04:59 voltium.backtester 2021-02-16  positions=62  day pnl=-319  cum pnl=-3372925
+20:05:42 voltium.backtester 2021-03-02  positions=58  day pnl=3290  cum pnl=-3399000
+20:06:25 voltium.backtester 2021-03-16  positions=64  day pnl=2998  cum pnl=-3451407
+20:07:08 voltium.backtester 2021-03-30  positions=64  day pnl=4401  cum pnl=-3573950
+20:07:50 voltium.backtester 2021-04-14  positions=65  day pnl=-7902  cum pnl=-3585530
+20:08:33 voltium.backtester 2021-04-28  positions=64  day pnl=-958  cum pnl=-3598264
+20:09:15 voltium.backtester 2021-05-12  positions=60  day pnl=-10418  cum pnl=-3667826
+20:09:57 voltium.backtester 2021-05-26  positions=68  day pnl=7688  cum pnl=-3678318
+20:10:41 voltium.backtester 2021-06-10  positions=72  day pnl=-1401  cum pnl=-3693607
+20:11:23 voltium.backtester 2021-06-24  positions=75  day pnl=-5115  cum pnl=-3708651
+20:12:06 voltium.backtester 2021-07-09  positions=73  day pnl=1587  cum pnl=-3736125
+20:12:49 voltium.backtester 2021-07-23  positions=73  day pnl=502  cum pnl=-3718430
+20:13:31 voltium.backtester 2021-08-06  positions=71  day pnl=-4717  cum pnl=-3745314
+20:14:14 voltium.backtester 2021-08-20  positions=71  day pnl=1539  cum pnl=-3781093
+20:14:56 voltium.backtester 2021-09-03  positions=73  day pnl=-711  cum pnl=-3792736
+20:15:39 voltium.backtester 2021-09-20  positions=73  day pnl=-8776  cum pnl=-3819894
+20:16:23 voltium.backtester 2021-10-04  positions=73  day pnl=2276  cum pnl=-3838956
+20:17:07 voltium.backtester 2021-10-18  positions=74  day pnl=652  cum pnl=-3846080
+20:17:50 voltium.backtester 2021-11-01  positions=73  day pnl=-26759  cum pnl=-3886433
+20:18:34 voltium.backtester 2021-11-15  positions=73  day pnl=-251  cum pnl=-3861369
+20:19:16 voltium.backtester 2021-11-30  positions=68  day pnl=-3652  cum pnl=-3881320
+20:19:58 voltium.backtester 2021-12-14  positions=69  day pnl=-3387  cum pnl=-3873466
+20:20:40 voltium.backtester 2021-12-29  positions=70  day pnl=2054  cum pnl=-3902088
+20:20:49 voltium.loaders vega convention for /Users/andrew/Projects/quant-research/data_store/option_greeks_2022/A.parquet: per_1.00_iv (per-unit share 1.00, per-point share 0.00, median dP/vega ratio 0.0100, theta/day share 1.00)
+20:21:22 voltium.backtester 2022-01-12  positions=72  day pnl=-4396  cum pnl=-3941295
+20:22:03 voltium.backtester 2022-01-27  positions=61  day pnl=7028  cum pnl=-3995916
+20:22:43 voltium.backtester 2022-02-10  positions=61  day pnl=6010  cum pnl=-4016709
+20:23:24 voltium.backtester 2022-02-25  positions=61  day pnl=-7023  cum pnl=-4048448
+20:24:06 voltium.backtester 2022-03-11  positions=47  day pnl=-1403  cum pnl=-4112300
+20:24:47 voltium.backtester 2022-03-25  positions=44  day pnl=-2  cum pnl=-4135332
+20:25:28 voltium.backtester 2022-04-08  positions=46  day pnl=847  cum pnl=-4161385
+20:26:10 voltium.backtester 2022-04-25  positions=47  day pnl=20878  cum pnl=-4170115
+20:26:51 voltium.backtester 2022-05-09  positions=50  day pnl=6316  cum pnl=-4181769
+20:27:31 voltium.backtester 2022-05-23  positions=48  day pnl=576  cum pnl=-4190932
+20:28:11 voltium.backtester 2022-06-07  positions=51  day pnl=5693  cum pnl=-4217040
+20:28:51 voltium.backtester 2022-06-22  positions=50  day pnl=-197  cum pnl=-4248928
+20:29:31 voltium.backtester 2022-07-07  positions=51  day pnl=3167  cum pnl=-4287033
+20:30:12 voltium.backtester 2022-07-21  positions=52  day pnl=-3640  cum pnl=-4108593
+20:30:52 voltium.backtester 2022-08-04  positions=53  day pnl=2963  cum pnl=-4139981
+20:31:34 voltium.backtester 2022-08-18  positions=58  day pnl=9324  cum pnl=-4119263
+20:32:14 voltium.backtester 2022-09-01  positions=59  day pnl=-755  cum pnl=-4170155
+20:32:56 voltium.backtester 2022-09-16  positions=59  day pnl=-3695  cum pnl=-4178411
+20:33:37 voltium.backtester 2022-09-30  positions=59  day pnl=-3244  cum pnl=-4203676
+20:34:18 voltium.backtester 2022-10-14  positions=62  day pnl=-9917  cum pnl=-4248782
+20:35:00 voltium.backtester 2022-10-28  positions=63  day pnl=1202  cum pnl=-4240561
+20:35:41 voltium.backtester 2022-11-11  positions=58  day pnl=-11135  cum pnl=-4276689
+20:36:23 voltium.backtester 2022-11-28  positions=58  day pnl=-10321  cum pnl=-4303461
+20:37:03 voltium.backtester 2022-12-12  positions=64  day pnl=-1388  cum pnl=-4313131
+20:37:45 voltium.backtester 2022-12-27  positions=72  day pnl=642  cum pnl=-4296385
+20:37:57 voltium.loaders vega convention for /Users/andrew/Projects/quant-research/data_store/option_greeks_2023/A.parquet: per_1.00_iv (per-unit share 1.00, per-point share 0.00, median dP/vega ratio 0.0101, theta/day share 1.00)
+20:38:28 voltium.backtester 2023-01-11  positions=70  day pnl=-1992  cum pnl=-4323649
+20:39:11 voltium.backtester 2023-01-26  positions=63  day pnl=-2444  cum pnl=-4361246
+20:39:54 voltium.backtester 2023-02-09  positions=68  day pnl=-13  cum pnl=-4477126
+20:40:36 voltium.backtester 2023-02-24  positions=63  day pnl=7189  cum pnl=-4496062
+20:41:20 voltium.backtester 2023-03-10  positions=56  day pnl=-22100  cum pnl=-4568732
+20:42:05 voltium.backtester 2023-03-24  positions=50  day pnl=-7296  cum pnl=-4629010
+20:42:50 voltium.backtester 2023-04-10  positions=54  day pnl=16987  cum pnl=-4655484
+20:43:33 voltium.backtester 2023-04-24  positions=58  day pnl=-8510  cum pnl=-4625227
+20:44:14 voltium.backtester 2023-05-08  positions=56  day pnl=34741  cum pnl=-4931446
+20:44:56 voltium.backtester 2023-05-22  positions=52  day pnl=14942  cum pnl=-4888524
+20:45:38 voltium.backtester 2023-06-06  positions=52  day pnl=-15380  cum pnl=-4903352
+20:46:22 voltium.backtester 2023-06-21  positions=56  day pnl=-3106  cum pnl=-4887496
+20:47:04 voltium.backtester 2023-07-06  positions=53  day pnl=106  cum pnl=-4915420
+20:47:50 voltium.backtester 2023-07-20  positions=55  day pnl=-5117  cum pnl=-4965925
+20:48:34 voltium.backtester 2023-08-03  positions=55  day pnl=2827  cum pnl=-4983299
+20:49:16 voltium.backtester 2023-08-17  positions=57  day pnl=8239  cum pnl=-4944472
+20:49:58 voltium.backtester 2023-08-31  positions=54  day pnl=-17563  cum pnl=-4953036
+20:50:42 voltium.backtester 2023-09-15  positions=58  day pnl=-2221  cum pnl=-4993673
+20:51:24 voltium.backtester 2023-09-29  positions=58  day pnl=-6675  cum pnl=-5010725
+20:52:07 voltium.backtester 2023-10-13  positions=55  day pnl=-8214  cum pnl=-5100433
+20:52:49 voltium.backtester 2023-10-27  positions=55  day pnl=4079  cum pnl=-5169158
+20:53:33 voltium.backtester 2023-11-10  positions=53  day pnl=8098  cum pnl=-5223003
+20:54:16 voltium.backtester 2023-11-27  positions=57  day pnl=-29770  cum pnl=-5253971
+20:55:01 voltium.backtester 2023-12-11  positions=64  day pnl=-2771  cum pnl=-5255287
+20:55:43 voltium.backtester 2023-12-26  positions=64  day pnl=972  cum pnl=-5341499
+20:55:55 voltium.loaders vega convention for /Users/andrew/Projects/quant-research/data_store/option_greeks_2024/A.parquet: per_1.00_iv (per-unit share 1.00, per-point share 0.00, median dP/vega ratio 0.0100, theta/day share 1.00)
+20:56:31 voltium.backtester 2024-01-10  positions=55  day pnl=2420  cum pnl=-5377838
+20:57:22 voltium.backtester 2024-01-25  positions=60  day pnl=2716  cum pnl=-5381705
+20:58:14 voltium.backtester 2024-02-08  positions=63  day pnl=10469  cum pnl=-5443157
+20:59:05 voltium.backtester 2024-02-23  positions=63  day pnl=2769  cum pnl=-5462930
+20:59:56 voltium.backtester 2024-03-08  positions=56  day pnl=1277  cum pnl=-5536891
+21:00:47 voltium.backtester 2024-03-22  positions=59  day pnl=-3742  cum pnl=-5586853
+21:01:40 voltium.backtester 2024-04-08  positions=56  day pnl=-2845  cum pnl=-5716616
+21:02:33 voltium.backtester 2024-04-22  positions=61  day pnl=-3043  cum pnl=-5765224
+21:03:26 voltium.backtester 2024-05-06  positions=45  day pnl=-12645  cum pnl=-5845432
+21:04:17 voltium.backtester 2024-05-20  positions=42  day pnl=-12320  cum pnl=-5876012
+21:05:08 voltium.backtester 2024-06-04  positions=41  day pnl=4299  cum pnl=-5907545
+21:05:59 voltium.backtester 2024-06-18  positions=47  day pnl=-2927  cum pnl=-5916207
+21:06:49 voltium.backtester 2024-07-03  positions=50  day pnl=-7174  cum pnl=-5955430
+21:07:40 voltium.backtester 2024-07-18  positions=56  day pnl=-7402  cum pnl=-5979392
+21:08:31 voltium.backtester 2024-08-01  positions=46  day pnl=5089  cum pnl=-6122536
+21:09:23 voltium.backtester 2024-08-15  positions=45  day pnl=2082  cum pnl=-6151954
+21:10:15 voltium.backtester 2024-08-29  positions=49  day pnl=3793  cum pnl=-6163040
+21:11:16 voltium.backtester 2024-09-13  positions=50  day pnl=11245  cum pnl=-6233808
+21:12:15 voltium.backtester 2024-09-27  positions=54  day pnl=-2745  cum pnl=-6250696
+21:13:10 voltium.backtester 2024-10-11  positions=56  day pnl=11245  cum pnl=-6252480
+21:14:02 voltium.backtester 2024-10-25  positions=59  day pnl=3451  cum pnl=-6272410
+21:14:54 voltium.backtester 2024-11-08  positions=58  day pnl=-1924  cum pnl=-6254871
+21:15:48 voltium.backtester 2024-11-22  positions=53  day pnl=-16605  cum pnl=-6312705
+21:16:41 voltium.backtester 2024-12-09  positions=46  day pnl=7702  cum pnl=-6355407
+21:17:33 voltium.backtester 2024-12-23  positions=42  day pnl=-6745  cum pnl=-6368155
+21:18:00 voltium.loaders vega convention for /Users/andrew/Projects/quant-research/data_store/option_greeks/A.parquet: per_1.00_iv (per-unit share 1.00, per-point share 0.00, median dP/vega ratio 0.0101, theta/day share 1.00)
+21:18:31 voltium.backtester 2025-01-08  positions=43  day pnl=-8531  cum pnl=-6392573
+21:19:31 voltium.backtester 2025-01-24  positions=43  day pnl=1225  cum pnl=-6412190
+21:20:31 voltium.backtester 2025-02-07  positions=48  day pnl=-4575  cum pnl=-6449427
+21:21:30 voltium.backtester 2025-02-24  positions=57  day pnl=-15084  cum pnl=-6498818
+21:22:25 voltium.backtester 2025-03-10  positions=57  day pnl=-2299  cum pnl=-6538561
+21:23:21 voltium.backtester 2025-03-24  positions=59  day pnl=-3257  cum pnl=-6533355
+21:24:18 voltium.backtester 2025-04-07  positions=52  day pnl=-16910  cum pnl=-6632317
+21:25:16 voltium.backtester 2025-04-22  positions=57  day pnl=4658  cum pnl=-6630851
+21:26:15 voltium.backtester 2025-05-06  positions=65  day pnl=193  cum pnl=-6663285
+21:27:12 voltium.backtester 2025-05-20  positions=72  day pnl=-4341  cum pnl=-6653264
+21:28:08 voltium.backtester 2025-06-04  positions=69  day pnl=-1809  cum pnl=-6670098
+21:29:05 voltium.backtester 2025-06-18  positions=71  day pnl=2074  cum pnl=-6706074
+21:29:46 voltium.backtester 2025-06-30  positions=69  day pnl=-31830  cum pnl=-6744211
+21:29:46 level_book backtest done (7444s)
+
+=== summary ===
+                            sessions: 1758
+                      mean_positions: 58.0546
+                     mean_gross_vega: 12,287.4243
+                       mean_net_vega: -116.2492
+                     total_gross_pnl: -112,122.7156
+                          total_cost: 6,632,087.8895
+                       total_net_pnl: -6,744,210.6051
+                              sharpe: -4.0697
+       annual_net_pnl_per_gross_vega: -78.6778
+                        max_drawdown: -6,745,276.8007
+     annual_turnover_over_gross_vega: 24.6346
+                           cost_drag: 59.1503
+
+=== factor regression (net P&L per $ gross vega on the risk factors) ===
+shape: (14, 5)
+┌────────────────────────┬─────────────┬──────────┬───────────┬──────────────┐
+│ regressor              ┆ coefficient ┆ t_stat   ┆ r_squared ┆ observations │
+│ ---                    ┆ ---         ┆ ---      ┆ ---       ┆ ---          │
+│ str                    ┆ f64         ┆ f64      ┆ f64       ┆ i64          │
+╞════════════════════════╪═════════════╪══════════╪═══════════╪══════════════╡
+│ const                  ┆ -0.3046     ┆ -10.8439 ┆ 0.1598    ┆ 1758         │
+│ Communication Services ┆ -0.2579     ┆ -10.6215 ┆ 0.1598    ┆ 1758         │
+│ Consumer Discretionary ┆ 0.0227      ┆ 0.7243   ┆ 0.1598    ┆ 1758         │
+│ Consumer Staples       ┆ 0.2165      ┆ 3.3166   ┆ 0.1598    ┆ 1758         │
+│ Energy                 ┆ 0.0053      ┆ 0.2012   ┆ 0.1598    ┆ 1758         │
+│ Financials             ┆ -0.2985     ┆ -4.3293  ┆ 0.1598    ┆ 1758         │
+│ Health Care            ┆ 0.1512      ┆ 2.4930   ┆ 0.1598    ┆ 1758         │
+│ Industrials            ┆ -0.0368     ┆ -0.4943  ┆ 0.1598    ┆ 1758         │
+│ Information Technology ┆ 0.0759      ┆ 1.6326   ┆ 0.1598    ┆ 1758         │
+│ Materials              ┆ -0.0284     ┆ -0.5700  ┆ 0.1598    ┆ 1758         │
+│ Real Estate            ┆ -0.1460     ┆ -3.0931  ┆ 0.1598    ┆ 1758         │
+│ Utilities              ┆ -0.0757     ┆ -2.5718  ┆ 0.1598    ┆ 1758         │
+│ market                 ┆ -0.2497     ┆ -8.6311  ┆ 0.1598    ┆ 1758         │
+│ spx_return             ┆ -4.3683     ┆ -1.5175  ┆ 0.1598    ┆ 1758         │
+└────────────────────────┴─────────────┴──────────┴───────────┴──────────────┘
+
+=== decile table (forward 60-session P&L per $ vega, long reference straddle) ===
+shape: (10, 6)
+┌────────┬────────────────────────┬──────────────────────┬──────────────┬────────────┬───────┐
+│ decile ┆ gross_fwd_pnl_per_vega ┆ net_fwd_pnl_per_vega ┆ gross_t_stat ┆ mean_names ┆ dates │
+│ ---    ┆ ---                    ┆ ---                  ┆ ---          ┆ ---        ┆ ---   │
+│ i64    ┆ f64                    ┆ f64                  ┆ f64          ┆ f64        ┆ u32   │
+╞════════╪════════════════════════╪══════════════════════╪══════════════╪════════════╪═══════╡
+│ 1      ┆ 1.4160                 ┆ -20.7810             ┆ 4.4591       ┆ 48.1280    ┆ 1758  │
+│ 2      ┆ 1.9626                 ┆ -18.4206             ┆ 6.0128       ┆ 48.6132    ┆ 1758  │
+│ 3      ┆ 2.0047                 ┆ -17.7990             ┆ 6.3673       ┆ 48.5063    ┆ 1758  │
+│ 4      ┆ 1.9875                 ┆ -17.9068             ┆ 6.3222       ┆ 48.6212    ┆ 1758  │
+│ 5      ┆ 1.9462                 ┆ -17.7732             ┆ 6.1623       ┆ 48.7076    ┆ 1758  │
+│ 6      ┆ 2.0624                 ┆ -18.0763             ┆ 6.5851       ┆ 48.4363    ┆ 1758  │
+│ 7      ┆ 2.1864                 ┆ -18.1422             ┆ 7.1538       ┆ 48.5262    ┆ 1758  │
+│ 8      ┆ 2.2610                 ┆ -18.5598             ┆ 7.4120       ┆ 48.6013    ┆ 1758  │
+│ 9      ┆ 2.1452                 ┆ -19.7403             ┆ 6.9235       ┆ 48.5182    ┆ 1758  │
+│ 10     ┆ 1.4161                 ┆ -26.3827             ┆ 4.2153       ┆ 49.0165    ┆ 1758  │
+└────────┴────────────────────────┴──────────────────────┴──────────────┴────────────┴───────┘
+
+figures in /Users/andrew/Projects/quant-research/voltium/demos/figures (*_iv_zscore_2018_2025.png)  (7445s)
