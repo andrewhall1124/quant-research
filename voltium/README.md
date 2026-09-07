@@ -11,6 +11,12 @@ moment; ABCs first, one concrete implementation each.
 This is v1: daily data only, no earnings adjustment, no skew or term books.
 The extension points for those are listed at the end.
 
+**Documentation** lives in [`docs/`](docs/README.md): one page per layer
+(architecture, data, units, instrument and backtester, risk model, signals
+and alphas, optimizer, trade generator and costs, results, running,
+extending) plus a log of every experiment run so far. This README is the
+summary.
+
 ```sh
 uv sync                                          # from the repo root; voltium is a workspace member
 uv run pytest voltium/tests                      # ~2s, no data needed for most
