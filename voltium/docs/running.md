@@ -43,6 +43,7 @@ Common flags (`build_parser` in `level_book.py`):
 | `--in-process` | off | estimate the risk model on the fly instead of reading the stored tables |
 | `--refresh` | off | rebuild the cached panels |
 | `--limit N` | | first N symbols (smoke test; the VRP signal needs ≥ 50 names to regress) |
+| `--engine` | `panel` | `panel`: fractional units of the stored reference straddle, seconds; `chain`: per-session chain scan, hours, the only engine that honours `--screens` |
 | `--strategy` | `mvo` | or `rank`: centred-rank dollar vega from the signal, no risk model, no optimizer |
 | `--costs` | off | charge the half-spread on every option fill and $0.005/share on the hedge |
 | `--screens` | off | integer contracts, max-spread 8% and min-OI 100 screens, 10% no-trade band |
@@ -54,7 +55,9 @@ The defaults are the **research configuration**: no costs, no screens,
 fractional contracts, net-vega-neutral and gross-vega constraints only.
 It answers "what does the signal earn" before "could it be traded"; the
 four switches turn the tradeability checks back on one at a time. The
-output tag carries the strategy (`records_vrp_mvo.parquet`, `_vrp_rank`).
+output tag carries the strategy and, for the panel engine, `_panel`
+(`records_vrp_mvo_panel.parquet`; `records_vrp_mvo.parquet` is the chain
+engine's).
 
 Each demo prints `summary()`, the factor regression and the decile table,
 writes `demos/records_<tag>.parquet` and `demos/portfolio_<tag>.json`, and
@@ -77,10 +80,12 @@ lines).
 | realized vol + HAR | 5 s | ~1 min |
 | stock features | 1 s | ~1 min |
 | signal | 5 s | ~30 s |
-| backtest | ~12 min (122 sessions) | ~3.5 h (1,758 sessions) |
+| backtest, chain engine | ~12 min (122 sessions) | ~3.5 h (1,758 sessions) |
+| backtest, panel engine | 1 s (rank), 5 s (MVO) | 10 s (rank), ~65 s (MVO) |
 
-The backtest is the per-session chain scan (`StoreChainProvider`, 1–3 s per
-session on 500+ files) plus the optimizer on rebalance days. The
+The chain backtest is the per-session chain scan (`StoreChainProvider`,
+1–3 s per session on 500+ files) plus the optimizer on rebalance days; the
+panel backtest is only the optimizer. The
 `--in-process` path adds ~4 min for reference paths on the six-month window.
 
 ## Caches

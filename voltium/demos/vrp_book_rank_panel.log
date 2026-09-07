@@ -1,0 +1,70 @@
+17:33:45 level_book 533 symbols, history from 2023-10-23, forward to 2025-10-08
+17:33:45 level_book reference paths: 250402 rows (0s)
+17:33:45 voltium.loaders vega convention for /Users/andrew/Projects/quant-research/data_store/index_greeks_2023/SPX.parquet: per_1.00_iv (per-unit share 1.00, per-point share 0.00, median dP/vega ratio 0.0101, theta/day share 1.00)
+17:33:46 level_book surface: 250255 rows (0s)
+17:33:46 level_book HAR: 256866 forecasts, last fit [{'date': datetime.date(2025, 10, 1), 'rows': 254694, 'const': -0.870249241039082, 'residual_var': 0.27997243607241123, 'b_rv_1': 0.1598099253128277, 'b_rv_5': 0.16263868384702326, 'b_rv_22': 0.9035994839514316}] (1s)
+17:33:46 level_book signal: 139907 rows, spx factor used: True
+17:33:46 level_book engine=panel strategy=rank costs=False screens=False constraints=net+gross jump=0.00
+17:33:46 voltium.panel_backtester 2025-01-02  positions=492  day pnl=0  cum pnl=0
+17:33:46 voltium.panel_backtester 2025-03-18  positions=490  day pnl=-4783  cum pnl=22749
+17:33:47 voltium.panel_backtester 2025-05-29  positions=496  day pnl=16472  cum pnl=100971
+17:33:47 voltium.panel_backtester 2025-06-30  positions=498  day pnl=-1220  cum pnl=64094
+17:33:47 level_book backtest done (1s)
+
+=== summary ===
+                            sessions: 122
+                      mean_positions: 492.6721
+                     mean_gross_vega: 19,812.9166
+                       mean_net_vega: 154.8146
+                     total_gross_pnl: 64,094.4742
+                          total_cost: 0.0000
+                       total_net_pnl: 64,094.4742
+                              sharpe: 1.5867
+       annual_net_pnl_per_gross_vega: 6.6821
+                        max_drawdown: -36,905.2837
+     annual_turnover_over_gross_vega: 51.8759
+                           cost_drag: 0.0000
+
+=== factor regression (net P&L per $ gross vega on the risk factors) ===
+shape: (14, 5)
+┌────────────────────────┬─────────────┬─────────┬───────────┬──────────────┐
+│ regressor              ┆ coefficient ┆ t_stat  ┆ r_squared ┆ observations │
+│ ---                    ┆ ---         ┆ ---     ┆ ---       ┆ ---          │
+│ str                    ┆ f64         ┆ f64     ┆ f64       ┆ i64          │
+╞════════════════════════╪═════════════╪═════════╪═══════════╪══════════════╡
+│ const                  ┆ 0.0386      ┆ 1.4654  ┆ 0.1448    ┆ 122          │
+│ Communication Services ┆ -0.0511     ┆ -1.3812 ┆ 0.1448    ┆ 122          │
+│ Consumer Discretionary ┆ 0.0771      ┆ 1.3558  ┆ 0.1448    ┆ 122          │
+│ Consumer Staples       ┆ 0.0365      ┆ 0.6449  ┆ 0.1448    ┆ 122          │
+│ Energy                 ┆ 0.0148      ┆ 0.5454  ┆ 0.1448    ┆ 122          │
+│ Financials             ┆ -0.0017     ┆ -0.0266 ┆ 0.1448    ┆ 122          │
+│ Health Care            ┆ -0.0168     ┆ -0.3503 ┆ 0.1448    ┆ 122          │
+│ Industrials            ┆ 0.0365      ┆ 0.5674  ┆ 0.1448    ┆ 122          │
+│ Information Technology ┆ 0.0198      ┆ 0.4107  ┆ 0.1448    ┆ 122          │
+│ Materials              ┆ -0.1024     ┆ -1.7107 ┆ 0.1448    ┆ 122          │
+│ Real Estate            ┆ 0.0339      ┆ 0.7254  ┆ 0.1448    ┆ 122          │
+│ Utilities              ┆ -0.0492     ┆ -1.7569 ┆ 0.1448    ┆ 122          │
+│ market                 ┆ 0.0483      ┆ 2.1071  ┆ 0.1448    ┆ 122          │
+│ spx_return             ┆ -0.1747     ┆ -0.0523 ┆ 0.1448    ┆ 122          │
+└────────────────────────┴─────────────┴─────────┴───────────┴──────────────┘
+
+=== decile table (forward 60-session P&L per $ vega, long reference straddle) ===
+shape: (10, 6)
+┌────────┬────────────────────────┬──────────────────────┬──────────────┬────────────┬───────┐
+│ decile ┆ gross_fwd_pnl_per_vega ┆ net_fwd_pnl_per_vega ┆ gross_t_stat ┆ mean_names ┆ dates │
+│ ---    ┆ ---                    ┆ ---                  ┆ ---          ┆ ---        ┆ ---   │
+│ i64    ┆ f64                    ┆ f64                  ┆ f64          ┆ f64        ┆ u32   │
+╞════════╪════════════════════════╪══════════════════════╪══════════════╪════════════╪═══════╡
+│ 1      ┆ 4.3907                 ┆ -16.4208             ┆ 5.1009       ┆ 49.5820    ┆ 122   │
+│ 2      ┆ 3.9338                 ┆ -17.0103             ┆ 4.5528       ┆ 49.9590    ┆ 122   │
+│ 3      ┆ 3.9037                 ┆ -17.6682             ┆ 4.5966       ┆ 49.9262    ┆ 122   │
+│ 4      ┆ 3.6669                 ┆ -17.9116             ┆ 4.1394       ┆ 49.9262    ┆ 122   │
+│ 5      ┆ 4.3495                 ┆ -16.7306             ┆ 4.8127       ┆ 50.1230    ┆ 122   │
+│ 6      ┆ 5.0809                 ┆ -16.2597             ┆ 5.4657       ┆ 49.8197    ┆ 122   │
+│ 7      ┆ 4.9829                 ┆ -16.2611             ┆ 5.4768       ┆ 49.9180    ┆ 122   │
+│ 8      ┆ 5.4714                 ┆ -15.5220             ┆ 5.6458       ┆ 49.9344    ┆ 122   │
+│ 9      ┆ 5.2236                 ┆ -16.9897             ┆ 5.9375       ┆ 49.9508    ┆ 122   │
+│ 10     ┆ 3.9598                 ┆ -19.1154             ┆ 4.9352       ┆ 50.3689    ┆ 122   │
+└────────┴────────────────────────┴──────────────────────┴──────────────┴────────────┴───────┘
+
+figures in /Users/andrew/Projects/quant-research/voltium/demos/figures (*_vrp_rank_panel.png)  (2s)

@@ -23,11 +23,10 @@ from __future__ import annotations
 
 import datetime as dt
 from abc import ABC, abstractmethod
-from typing import Literal
+from typing import Literal, Protocol
 
 import polars as pl
 
-from voltium.portfolio import Portfolio
 from voltium.providers.base import Provider
 from voltium.providers.universe import UniverseProvider
 
@@ -35,9 +34,21 @@ TARGET_SCHEMA = {"symbol": pl.Utf8, "target_vega": pl.Float64}
 PREVIOUS_SCHEMA = {"symbol": pl.Utf8, "dollar_vega": pl.Float64}
 
 
+class Book(Protocol):
+    """What a strategy needs to know about the current book.
+
+    `portfolio.Portfolio` (the chain backtester's state) and
+    `panel_backtester.VegaBook` both satisfy it.
+    """
+
+    def symbols(self) -> list[str]: ...
+
+    def dollar_vega(self, symbol: str) -> float: ...
+
+
 class Strategy(ABC):
     @abstractmethod
-    def generate_targets(self, date_: dt.date, chain_df: pl.DataFrame, portfolio: Portfolio) -> pl.DataFrame:
+    def generate_targets(self, date_: dt.date, chain_df: pl.DataFrame, portfolio: Book) -> pl.DataFrame:
         """`(symbol, target_vega)` in dollars per vol point; long > 0."""
 
 
@@ -45,7 +56,7 @@ class FixedTargetStrategy(Strategy):
     def __init__(self, targets: dict[str, float]) -> None:
         self.targets = targets
 
-    def generate_targets(self, date_: dt.date, chain_df: pl.DataFrame, portfolio: Portfolio) -> pl.DataFrame:
+    def generate_targets(self, date_: dt.date, chain_df: pl.DataFrame, portfolio: Book) -> pl.DataFrame:
         return pl.DataFrame(
             {"symbol": list(self.targets), "target_vega": list(self.targets.values())},
             schema=TARGET_SCHEMA,
@@ -59,7 +70,7 @@ class ReferenceUnitStrategy(Strategy):
     the decile table are estimated on.
     """
 
-    def generate_targets(self, date_: dt.date, chain_df: pl.DataFrame, portfolio: Portfolio) -> pl.DataFrame:
+    def generate_targets(self, date_: dt.date, chain_df: pl.DataFrame, portfolio: Book) -> pl.DataFrame:
         symbols = chain_df["symbol"].unique().sort().to_list()
         return pl.DataFrame(
             {"symbol": symbols, "target_vega": [0.0] * len(symbols), "target_contracts": [1] * len(symbols)},
@@ -84,7 +95,7 @@ class ScoreStrategy(Strategy):
         self.score_column = score_column
         self.universe = universe
 
-    def generate_targets(self, date_: dt.date, chain_df: pl.DataFrame, portfolio: Portfolio) -> pl.DataFrame:
+    def generate_targets(self, date_: dt.date, chain_df: pl.DataFrame, portfolio: Book) -> pl.DataFrame:
         eligible = set(chain_df["symbol"].unique().to_list())
         if self.universe is not None:
             eligible &= set(self.universe.get(date_)["symbol"].to_list())

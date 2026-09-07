@@ -23,6 +23,12 @@ That shows what the signal earns before asking whether it could be traded.
 tradeability checks back on one at a time; `--strategy rank` replaces the
 optimizer with a rank-weighted book that uses no risk model at all.
 
+The default engine is the *panel* backtester: it holds fractional units of
+the stored reference straddle per name and reads P&L, vega and costs off
+the reference panel, so a run is seconds of backtest instead of hours of
+chain scanning. `--engine chain` is the full per-session chain backtester;
+it is the only one that honours `--screens`.
+
 The dates default to the first half of 2025 because that is where every
 input exists at once: the stock tier (and so realized vol) starts mid-2023,
 the HAR needs a year of fits behind it, and the risk model needs 250
@@ -54,6 +60,7 @@ from voltium.optimizer.constraints import (
 from voltium.optimizer.mvo import MVO
 from voltium.optimizer.objectives import JumpPenalty, MaxUtility, TurnoverPenalty
 from voltium.optimizer.strategy import OptimizationStrategy
+from voltium.panel_backtester import PanelBacktestConfig, PanelBacktester
 from voltium.providers.alphas import AlphaConfig, ICScaledAlpha
 from voltium.providers.base import PanelProvider, materialize_by_symbol
 from voltium.providers.calendar import TradingCalendar
@@ -143,6 +150,7 @@ def build_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--refresh", action="store_true", help="rebuild cached panels")
     parser.add_argument("--limit", type=int, default=None, help="use only the first N symbols (smoke test)")
     parser.add_argument("--in-process", action="store_true", help="estimate the risk model here instead of reading the store")
+    parser.add_argument("--engine", default="panel", choices=["panel", "chain"], help="panel: precomputed reference returns, seconds; chain: scan the option chain every session, hours")
     parser.add_argument("--strategy", default="mvo", choices=["mvo", "rank"], help="CVXPY mean-variance book, or centred-rank weights with no risk model")
     parser.add_argument("--costs", action="store_true", help="charge the half-spread on options and $0.005/share on the hedge (default: no costs)")
     parser.add_argument("--screens", action="store_true", help="integer contracts, max-spread and min-OI screens, 10%% no-trade band (default: none)")
@@ -292,24 +300,33 @@ def run_book(args: argparse.Namespace, panels: Panels, signal: SignalProvider, t
     paths, calendar, instrument, started = panels.paths, panels.calendar, panels.instrument, panels.started
     risk_model_constructor = panels.risk_model_constructor
     strategy = build_strategy(args, panels, signal)
-    trade_config = TradeGeneratorConfig(max_spread=0.08, min_oi=100, band=0.10) if args.screens else TradeGeneratorConfig.research()
-    backtester = Backtester(
-        calendar=calendar,
-        chain=StoreChainProvider(paths, panels.symbols),
-        instrument=instrument,
-        strategy=strategy,
-        trade_generator=TradeGenerator(instrument, trade_config),
-        config=BacktestConfig(start=args.start, end=args.end, rebalance=args.rebalance),
-        option_cost=HalfSpreadCost(fraction=1.0) if args.costs else None,
-        hedge_cost=PerShareCost(0.005) if args.costs else None,
-    )
-    log.info("strategy=%s costs=%s screens=%s constraints=%s jump=%.2f", args.strategy, args.costs, args.screens,
+    log.info("engine=%s strategy=%s costs=%s screens=%s constraints=%s jump=%.2f", args.engine, args.strategy, args.costs, args.screens,
              "full" if args.full_constraints else "net+gross", args.jump_penalty)
+    if args.engine == "panel":
+        if args.screens:
+            log.warning("--screens has no effect on the panel engine (fractional, unscreened by construction)")
+        backtester = PanelBacktester(
+            calendar, panels.reference, strategy,
+            PanelBacktestConfig(start=args.start, end=args.end, rebalance=args.rebalance, cost_fraction=1.0 if args.costs else 0.0),
+        )
+    else:
+        trade_config = TradeGeneratorConfig(max_spread=0.08, min_oi=100, band=0.10) if args.screens else TradeGeneratorConfig.research()
+        backtester = Backtester(
+            calendar=calendar,
+            chain=StoreChainProvider(paths, panels.symbols),
+            instrument=instrument,
+            strategy=strategy,
+            trade_generator=TradeGenerator(instrument, trade_config),
+            config=BacktestConfig(start=args.start, end=args.end, rebalance=args.rebalance),
+            option_cost=HalfSpreadCost(fraction=1.0) if args.costs else None,
+            hedge_cost=PerShareCost(0.005) if args.costs else None,
+        )
     records_df, portfolio = backtester.run()
-    tag = f"{tag}_{args.strategy}"
+    tag = f"{tag}_{args.strategy}" + ("_panel" if args.engine == "panel" else "")
     tag = f"{tag}_{args.start.year}_{args.end.year}" if args.rv_source == "close" else tag
     records_df.write_parquet(DEMO_DIR / f"records_{tag}.parquet")
-    portfolio.save(DEMO_DIR / f"portfolio_{tag}.json")
+    if args.engine == "chain":
+        portfolio.save(DEMO_DIR / f"portfolio_{tag}.json")
     log.info("backtest done (%.0fs)", time.time() - started)
 
     # --- results ------------------------------------------------------------

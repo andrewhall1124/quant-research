@@ -114,7 +114,8 @@ strategy.py                Strategy, ScoreStrategy ABCs; RankWeightedStrategy, F
 trade_generator.py         target vega → contracts (integer or fractional); MaxSpread, MinOpenInterest, no-trade band
 costs.py                   CostModel ABC; HalfSpreadCost (options), PerShareCost (hedge)
 portfolio.py               Portfolio / Position, JSON save & load
-backtester.py              the daily loop
+backtester.py              the daily loop over the chain (chain engine)
+panel_backtester.py        the same book off the reference panel, seconds not hours (panel engine)
 results.py                 BacktestResults: summary, factor_regression, decile_table, plots
 ```
 
@@ -222,6 +223,26 @@ books earn roughly half the dollars of the MVO books with a third of the
 drawdown, so the optimizer is adding return but not risk-adjusted return
 on this window. Turnover is 45–60x gross vega a year in every case, which
 is why the tradeable configuration below is cost-dominated.
+
+Seven years on the panel engine (`--rv-source close --start 2018-07-02
+--end 2025-06-30`; a minute per book):
+
+| | VRP, MVO | VRP, rank | IV z, MVO | IV z, rank |
+| --- | --- | --- | --- | --- |
+| mean positions / gross vega | 476 / $19.5k | 470 / $19.4k | 489 / $19.1k | 485 / $19.5k |
+| gross P&L | +$2.97M | +$1.07M | +$1.58M | +$1.31M |
+| annualised gross P&L per $ gross vega | 21.9 | 7.9 | 11.8 | 9.7 |
+| Sharpe (gross) | 1.28 | 1.56 | 0.67 | 1.50 |
+| max drawdown | -$280k | -$83k | -$597k | -$223k |
+| annual turnover / gross vega | 40x | 50x | 35x | 51x |
+| P&L loading on market vol factor (t) | +0.01 (0.3) | +0.01 (0.9) | -0.08 (-3.3) | -0.08 (-8.3) |
+| intercept, P&L per $ gross vega per day (t) | 0.081 (3.2) | 0.030 (4.0) | 0.048 (2.0) | 0.040 (4.6) |
+| backtest time | 63 s | 11 s | 64 s | 10 s |
+
+Every intercept is significant over seven years; VRP beats the z-score as
+the seven-year deciles say it should; the optimizer buys P&L with
+concentration and does not beat the rank book on Sharpe. Details and the
+chain-versus-panel agreement note are in [docs/experiments.md](docs/experiments.md).
 
 The earlier *tradeable* configuration (costs, screens, full constraints,
 jump penalty 1.0), i.e. today's `--costs --screens --full-constraints --jump-penalty 1`:

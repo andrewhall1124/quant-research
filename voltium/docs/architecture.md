@@ -29,17 +29,24 @@ loaders.py ──────────── canonical option / stock / unive
         │            ▼
         │    trade_generator.py ───────────── straddle contracts (integer or fractional), screened
         │            │
-        └──► backtester.py ◄── instruments/straddle.py, costs.py, portfolio.py
-                     │
-                     ▼
-             results.py ───────────────────── summary, factor regression, decile table, plots
+        ├──► backtester.py ◄── instruments/straddle.py, costs.py, portfolio.py   (chain engine)
+        │            │
+        │    panel_backtester.py ◄── the reference panel                         (panel engine)
+        │            │
+        └────────────┴──► results.py ────────── summary, factor regression, decile table, plots
 ```
 
 Everything left of the backtester is a **panel**: a small frame with one row
 per `(date, symbol)`, built once from lazy scans and held in memory behind a
-`Provider.get(date)`. The backtester itself scans the option chain one
-session at a time, because a day's cross-section of contracts is what the
-instrument needs and the full joined chain would not fit.
+`Provider.get(date)`. There are two backtest engines over the same
+`Strategy`. The **chain engine** scans the option chain one session at a
+time and marks every leg; it is the ground truth and the only one that
+knows about integer contracts and liquidity screens. The **panel engine**
+holds fractional units of the stored reference straddle per name and reads
+P&L, vega and costs off the reference panel, which makes a seven-year book
+a matter of seconds plus the strategy calls; it reproduces the chain
+engine's fractional, unscreened numbers to 1e-6 (see
+[instrument_and_backtester.md](instrument_and_backtester.md)).
 
 ## Module map
 
@@ -77,7 +84,8 @@ src/voltium/
   trade_generator.py         Trade, TradeGeneratorConfig, TradingConstraint ABC, MaxSpread, MinOpenInterest, TradeGenerator
   costs.py                   CostModel ABC; NoCost, HalfSpreadCost, PerShareCost
   portfolio.py               Position, Portfolio (JSON round-trip)
-  backtester.py              BacktestConfig, Backtester, RECORD_SCHEMA
+  backtester.py              BacktestConfig, Backtester, RECORD_SCHEMA          (chain engine)
+  panel_backtester.py        PanelBacktestConfig, PanelBacktester, VegaBook      (panel engine)
   results.py                 BacktestResults
   utils/
     bs.py                    Black-Scholes price and greeks (vectorised)

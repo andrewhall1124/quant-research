@@ -101,6 +101,46 @@ contracts and no band mean every rebalance trades every name. Any cost
 model will dominate at that cadence; the comparison to make next is the
 same four books over seven years, then the same four with `--costs`.
 
+### The panel engine against the chain engine
+
+`panel_backtester.py` holds fractional units of the stored reference
+straddle per name and reads P&L off the reference panel; six months of the
+VRP book takes 1 s (rank) or 5 s (MVO) of backtest against 12 minutes.
+On two synthetic chains the two engines agree to 1e-6 through several
+rolls. On the real six-month books they do not:
+
+| VRP book, six months | chain engine | panel engine |
+| --- | --- | --- |
+| rank: gross P&L / Sharpe | +$80k / 2.35 | +$64k / 1.59 |
+| MVO: gross P&L / Sharpe | +$140k / 1.02 | +$122k / 0.80 |
+| daily book P&L correlation | 0.88 (rank), 0.90 (MVO) | |
+| mean gross vega, positions | identical | |
+
+The gap is the **identity of the unit**, not the accounting. Per name-day,
+93% of rows hold the identical straddle (same expiration and strike) and
+there the two engines' P&L correlates at 0.999 on ordinary days. The other
+7% hold the same expiration at a different strike, and those rows carry
+93% of the absolute P&L difference. They arise when the 15% re-strike rule
+fires on a different date in the two books: the reference path's strike is
+the one it rolled into on its own schedule, the chain engine's is the one
+struck when the book entered the name, and a name that moves 15% pushes
+one across the band before the other (HUM in January 2025 is the worked
+example: reference re-struck on the 13th, chain book on the 28th, then
+two straddles 7% apart on the same expiration). Because these are, by
+construction, the names with the largest moves, their gamma-dominated P&L
+is strike-specific and nearly uncorrelated between the two strikes (0.18).
+
+**What it says.** "The 60/20 rolling ATM straddle" is not a well-defined
+return series; its daily P&L depends on the strike's phase, and that
+dependence is concentrated exactly where the P&L is largest. The panel
+engine's series is the one the risk model and the decile table are
+estimated on, so a panel-engine book is internally consistent; the chain
+engine's book is what a trader who entered on the book's dates would have
+held. Neither is wrong. The open design question is whether the reference
+unit should be defined to remove the phase — a daily re-struck (constant
+moneyness) synthetic, or an average over several staggered roll schedules
+— which would also make the risk model's returns less noisy.
+
 ## Seven years, 2018-07-02 to 2025-06-30, 659 names, close-to-close realized vol
 
 The stock file starts mid-2023, so realized vol, the HAR and the stock
@@ -143,6 +183,45 @@ VRP book's gross of +$952k over seven years on $12k of vega (+0.3 points a
 session on gross exposure) is the number to build on, and the cost side is
 a cadence and fill-assumption question. Net of the full half-spread every
 decile is negative in both tables.
+
+### Seven-year research-configuration books on the panel engine
+
+Same four books as the six-month table above, 2018-07-02 to 2025-06-30,
+1,758 sessions, 659 names, close-to-close realized vol, panel engine
+(`--engine panel --rv-source close`; logs `demos/*_panel_long.log`):
+
+| | VRP, MVO | VRP, rank | IV z, MVO | IV z, rank |
+| --- | --- | --- | --- | --- |
+| mean positions / gross vega | 476 / $19.5k | 470 / $19.4k | 489 / $19.1k | 485 / $19.5k |
+| gross P&L | +$2.97M | +$1.07M | +$1.58M | +$1.31M |
+| annualised gross P&L per $ gross vega | 21.9 | 7.9 | 11.8 | 9.7 |
+| Sharpe (gross) | 1.28 | 1.56 | 0.67 | 1.50 |
+| max drawdown | -$280k | -$83k | -$597k | -$223k |
+| annual turnover / gross vega | 40x | 50x | 35x | 51x |
+| P&L loading on market vol factor (t) | +0.01 (0.3) | +0.01 (0.9) | -0.08 (-3.3) | -0.08 (-8.3) |
+| intercept, P&L per $ gross vega per day (t) | 0.081 (3.2) | 0.030 (4.0) | 0.048 (2.0) | 0.040 (4.6) |
+| backtest time | 63 s | 11 s | 64 s | 10 s |
+
+**What it says.** Over seven years every book is positive gross and every
+intercept is significant, the rank books at t 4.0–4.6. The ordering of the
+signals reverses from the six-month window: the VRP book earns more than
+the IV z-score under both sizers, as the seven-year decile tables said it
+should (decile 10 of the VRP earns 0.21 per vega, the z-score's is
+U-shaped). The MVO-versus-rank pattern from the six-month runs holds: the
+optimizer buys dollars with concentration — the VRP MVO book earns 2.8×
+the rank book's P&L at 3.4× its drawdown and a lower Sharpe; on the IV
+z-score the optimizer is strictly worse, Sharpe 0.67 against 1.50, and its
+$597k drawdown is a third of its total P&L. The z-score books carry a
+significant short market-vol loading (−0.08, t −3.3 and −8.3) with no
+factor-neutral constraint to remove it; the VRP books do not, because the
+signal residualises it out before the optimizer sees it.
+
+**What it does not say.** Costs are off and turnover is 35–51× gross
+vega a year, so none of this is net of anything; the `--costs` rerun is
+the next number to look at, and it is now a two-minute job. These are
+panel-engine books, so they hold the reference unit's strike phase (see
+the agreement note above), and the same books on the chain engine would
+differ by the amount that note describes.
 
 ## Open questions
 

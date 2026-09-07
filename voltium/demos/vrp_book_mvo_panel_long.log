@@ -1,0 +1,103 @@
+17:36:34 level_book 659 symbols, history from 2017-04-24, forward to 2025-10-08
+17:36:34 level_book reference paths: 1067053 rows (0s)
+17:36:35 voltium.loaders vega convention for /Users/andrew/Projects/quant-research/data_store/index_greeks_2017/SPX.parquet: per_1.00_iv (per-unit share 1.00, per-point share 0.00, median dP/vega ratio 0.0100, theta/day share 1.00)
+17:36:35 level_book surface: 1067345 rows (1s)
+17:36:37 level_book HAR: 1046279 forecasts, last fit [{'date': datetime.date(2025, 10, 1), 'rows': 1043953, 'const': -1.131449256807854, 'residual_var': 0.5294040664610805, 'b_rv_1': 0.025852336886258424, 'b_rv_5': 0.19588718583422726, 'b_rv_22': 0.8056671009823344}] (3s)
+17:36:39 level_book signal: 894366 rows, spx factor used: True
+17:36:39 level_book engine=panel strategy=mvo costs=False screens=False constraints=net+gross jump=0.00
+17:36:39 voltium.panel_backtester 2018-07-02  positions=451  day pnl=0  cum pnl=0
+17:36:41 voltium.panel_backtester 2018-09-12  positions=457  day pnl=-3050  cum pnl=212836
+17:36:42 voltium.panel_backtester 2018-11-21  positions=456  day pnl=4395  cum pnl=202154
+17:36:44 voltium.panel_backtester 2019-02-06  positions=452  day pnl=-2869  cum pnl=125333
+17:36:45 voltium.panel_backtester 2019-04-18  positions=474  day pnl=-12459  cum pnl=206385
+17:36:47 voltium.panel_backtester 2019-07-01  positions=476  day pnl=-4948  cum pnl=440071
+17:36:49 voltium.panel_backtester 2019-09-11  positions=452  day pnl=3514  cum pnl=387220
+17:36:50 voltium.panel_backtester 2019-11-20  positions=452  day pnl=-24366  cum pnl=441873
+17:36:52 voltium.panel_backtester 2020-02-04  positions=440  day pnl=2370  cum pnl=579336
+17:36:53 voltium.panel_backtester 2020-04-16  positions=473  day pnl=-62144  cum pnl=959308
+17:36:54 voltium.panel_backtester 2020-06-26  positions=474  day pnl=-20144  cum pnl=1063455
+17:36:56 voltium.panel_backtester 2020-09-08  positions=477  day pnl=1704  cum pnl=1150093
+17:36:58 voltium.panel_backtester 2020-11-17  positions=480  day pnl=-905  cum pnl=1283372
+17:36:59 voltium.panel_backtester 2021-02-01  positions=467  day pnl=34860  cum pnl=1386186
+17:37:01 voltium.panel_backtester 2021-04-14  positions=482  day pnl=931  cum pnl=1535000
+17:37:02 voltium.panel_backtester 2021-06-24  positions=481  day pnl=41500  cum pnl=1700779
+17:37:04 voltium.panel_backtester 2021-09-03  positions=483  day pnl=9406  cum pnl=1695688
+17:37:06 voltium.panel_backtester 2021-11-15  positions=484  day pnl=1798  cum pnl=1791488
+17:37:07 voltium.panel_backtester 2022-01-27  positions=471  day pnl=-29958  cum pnl=1944863
+17:37:09 voltium.panel_backtester 2022-04-08  positions=488  day pnl=10531  cum pnl=2121644
+17:37:11 voltium.panel_backtester 2022-06-22  positions=483  day pnl=-45739  cum pnl=2056116
+17:37:12 voltium.panel_backtester 2022-09-01  positions=481  day pnl=5525  cum pnl=2144673
+17:37:14 voltium.panel_backtester 2022-11-11  positions=482  day pnl=-5464  cum pnl=2126377
+17:37:16 voltium.panel_backtester 2023-01-26  positions=477  day pnl=-41086  cum pnl=2248991
+17:37:17 voltium.panel_backtester 2023-04-10  positions=488  day pnl=2024  cum pnl=2238691
+17:37:19 voltium.panel_backtester 2023-06-21  positions=488  day pnl=12760  cum pnl=2316195
+17:37:21 voltium.panel_backtester 2023-08-31  positions=489  day pnl=-12442  cum pnl=2474826
+17:37:22 voltium.panel_backtester 2023-11-10  positions=489  day pnl=4067  cum pnl=2452360
+17:37:24 voltium.panel_backtester 2024-01-25  positions=480  day pnl=-7775  cum pnl=2403318
+17:37:26 voltium.panel_backtester 2024-04-08  positions=491  day pnl=-24299  cum pnl=2638429
+17:37:27 voltium.panel_backtester 2024-06-18  positions=490  day pnl=35438  cum pnl=2828484
+17:37:29 voltium.panel_backtester 2024-08-29  positions=491  day pnl=12726  cum pnl=2887329
+17:37:31 voltium.panel_backtester 2024-11-08  positions=491  day pnl=-3798  cum pnl=2860399
+17:37:33 voltium.panel_backtester 2025-01-24  positions=480  day pnl=-11372  cum pnl=2943169
+17:37:34 voltium.panel_backtester 2025-04-07  positions=492  day pnl=-48984  cum pnl=3038812
+17:37:36 voltium.panel_backtester 2025-06-18  positions=492  day pnl=-13586  cum pnl=2965925
+17:37:36 voltium.panel_backtester 2025-06-30  positions=494  day pnl=7826  cum pnl=2967546
+17:37:37 level_book backtest done (63s)
+
+=== summary ===
+                            sessions: 1758
+                      mean_positions: 475.8402
+                     mean_gross_vega: 19,464.9039
+                       mean_net_vega: -143.9938
+                     total_gross_pnl: 2,967,546.1026
+                          total_cost: 0.0000
+                       total_net_pnl: 2,967,546.1026
+                              sharpe: 1.2772
+       annual_net_pnl_per_gross_vega: 21.8538
+                        max_drawdown: -279,880.7363
+     annual_turnover_over_gross_vega: 39.8562
+                           cost_drag: 0.0000
+
+=== factor regression (net P&L per $ gross vega on the risk factors) ===
+shape: (14, 5)
+┌────────────────────────┬─────────────┬─────────┬───────────┬──────────────┐
+│ regressor              ┆ coefficient ┆ t_stat  ┆ r_squared ┆ observations │
+│ ---                    ┆ ---         ┆ ---     ┆ ---       ┆ ---          │
+│ str                    ┆ f64         ┆ f64     ┆ f64       ┆ i64          │
+╞════════════════════════╪═════════════╪═════════╪═══════════╪══════════════╡
+│ const                  ┆ 0.0807      ┆ 3.2369  ┆ 0.0296    ┆ 1758         │
+│ Communication Services ┆ -0.0551     ┆ -2.5546 ┆ 0.0296    ┆ 1758         │
+│ Consumer Discretionary ┆ -0.0502     ┆ -1.8015 ┆ 0.0296    ┆ 1758         │
+│ Consumer Staples       ┆ -0.0861     ┆ -1.4862 ┆ 0.0296    ┆ 1758         │
+│ Energy                 ┆ -0.0414     ┆ -1.7604 ┆ 0.0296    ┆ 1758         │
+│ Financials             ┆ 0.1088      ┆ 1.7772  ┆ 0.0296    ┆ 1758         │
+│ Health Care            ┆ -0.2171     ┆ -4.0331 ┆ 0.0296    ┆ 1758         │
+│ Industrials            ┆ -0.0631     ┆ -0.9536 ┆ 0.0296    ┆ 1758         │
+│ Information Technology ┆ 0.1705      ┆ 4.1301  ┆ 0.0296    ┆ 1758         │
+│ Materials              ┆ 0.0606      ┆ 1.3677  ┆ 0.0296    ┆ 1758         │
+│ Real Estate            ┆ 0.0439      ┆ 1.0486  ┆ 0.0296    ┆ 1758         │
+│ Utilities              ┆ 0.0234      ┆ 0.8969  ┆ 0.0296    ┆ 1758         │
+│ market                 ┆ 0.0078      ┆ 0.3045  ┆ 0.0296    ┆ 1758         │
+│ spx_return             ┆ 1.3050      ┆ 0.5106  ┆ 0.0296    ┆ 1758         │
+└────────────────────────┴─────────────┴─────────┴───────────┴──────────────┘
+
+=== decile table (forward 60-session P&L per $ vega, long reference straddle) ===
+shape: (10, 6)
+┌────────┬────────────────────────┬──────────────────────┬──────────────┬────────────┬───────┐
+│ decile ┆ gross_fwd_pnl_per_vega ┆ net_fwd_pnl_per_vega ┆ gross_t_stat ┆ mean_names ┆ dates │
+│ ---    ┆ ---                    ┆ ---                  ┆ ---          ┆ ---        ┆ ---   │
+│ i64    ┆ f64                    ┆ f64                  ┆ f64          ┆ f64        ┆ u32   │
+╞════════╪════════════════════════╪══════════════════════╪══════════════╪════════════╪═══════╡
+│ 1      ┆ 2.0368                 ┆ -17.6124             ┆ 6.5033       ┆ 46.3713    ┆ 1756  │
+│ 2      ┆ 2.2939                 ┆ -17.0351             ┆ 7.3072       ┆ 46.8531    ┆ 1756  │
+│ 3      ┆ 2.3426                 ┆ -17.2163             ┆ 7.3458       ┆ 46.7335    ┆ 1756  │
+│ 4      ┆ 2.2642                 ┆ -17.6172             ┆ 7.0864       ┆ 46.8622    ┆ 1756  │
+│ 5      ┆ 2.2336                 ┆ -18.0557             ┆ 6.9223       ┆ 46.9749    ┆ 1756  │
+│ 6      ┆ 2.2458                 ┆ -18.2973             ┆ 7.0053       ┆ 46.6669    ┆ 1756  │
+│ 7      ┆ 2.0096                 ┆ -18.5932             ┆ 6.4037       ┆ 46.7506    ┆ 1756  │
+│ 8      ┆ 1.7620                 ┆ -19.1933             ┆ 5.7339       ┆ 46.8451    ┆ 1756  │
+│ 9      ┆ 1.6859                 ┆ -20.7728             ┆ 5.4966       ┆ 46.7415    ┆ 1756  │
+│ 10     ┆ 0.2146                 ┆ -28.2248             ┆ 0.6810       ┆ 47.2893    ┆ 1756  │
+└────────┴────────────────────────┴──────────────────────┴──────────────┴────────────┴───────┘
+
+figures in /Users/andrew/Projects/quant-research/voltium/demos/figures (*_vrp_mvo_panel_2018_2025.png)  (63s)

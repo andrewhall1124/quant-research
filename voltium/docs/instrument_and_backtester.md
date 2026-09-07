@@ -148,6 +148,45 @@ accumulate it.
 `results.BacktestResults` aggregates these to a book series; see
 [results.md](results.md).
 
+## The panel engine (`panel_backtester.py`)
+
+```python
+PanelBacktester(calendar, reference, strategy, PanelBacktestConfig(start, end, rebalance="weekly", cost_fraction=0.0))
+records_df, book = backtester.run()
+```
+
+`reference` is any `PanelProvider` in `REFERENCE_SCHEMA` — in practice
+`StoredStraddleReturns`, the per-unit-vega paths `vol-risk-model` wrote.
+The engine holds `units` of the reference unit per name (a `VegaBook`,
+which satisfies the `Book` protocol strategies read) and per session:
+
+1. `option_pnl = units × entry_vega × pnl_per_vega`, holding cost
+   `|units| × entry_vega × cost_per_vega × cost_fraction` (rolls and daily
+   hedging, as the reference path paid them). A name with no row today was
+   force-closed in the reference path; its units go to zero (`forced_close`).
+2. On a rebalance session the strategy sees the names with a row today and
+   the book marked at today's unit vega; `units = target_vega / dollar_vega`,
+   and the trade pays `|Δunits| × half_spread × cost_fraction`, the
+   half-spread being `exit_cost_per_vega × inception vega`.
+3. One `RECORD_SCHEMA` row per name held at any point in the session, so
+   `BacktestResults` reads it unchanged. All P&L is in `option_pnl` and all
+   cost in `option_cost` (the panel does not separate them);
+   `expiration`, `strike`, `hedge_shares`, `book_delta` are null or zero.
+
+Because the reference path holds one unit through its rolls, `units` are
+contracts and the arithmetic is the chain engine's, linearly scaled.
+`tests/test_panel_backtester.py` builds two synthetic chains, runs both
+engines on the same fractional unscreened book through several rolls, and
+asserts gross P&L, gross vega, net vega and non-rebalance-day costs agree
+to 1e-6. What the panel engine cannot do: integer contracts, the no-trade
+band, liquidity screens, the per-share hedge fill on a resize (no per-unit
+delta in the panel; under 1% of option cost), or a name whose reference
+unit never opened. It also fixes the instrument: a new `StraddleConfig`
+needs a new reference panel.
+
+`demos/level_book.py` uses it by default (`--engine panel`); the chain
+engine is `--engine chain`.
+
 ## Chain providers (`providers/chain.py`)
 
 The backtester asks `ChainProvider.get(date)` once per session for canonical
