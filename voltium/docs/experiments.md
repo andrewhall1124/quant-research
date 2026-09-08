@@ -223,6 +223,21 @@ panel-engine books, so they hold the reference unit's strike phase (see
 the agreement note above), and the same books on the chain engine would
 differ by the amount that note describes.
 
+### Momentum and reversal in the reference returns
+
+`research/vol_momentum` and `research/vol_reversal` (Heston, Jones,
+Khorram, Li and Mo, 2023), on the seven-year panel with rank and MVO books
+on the panel engine. Momentum in the reference straddle's past P&L is the
+strongest sort on this panel — a 2.3-point 60-session decile spread at
+6 months skipping the last month, monotone, against the VRP's 1.8 — but
+the rank book earns Sharpe 0.9 at best because it carries a long
+market-vol tilt (t 8) and turns over 31× a year. Including the last month
+turns the book negative. Short-horizon reversal is bid-ask bounce: a
+one-week reversal book has gross Sharpe 4.5 with the last session in and
+1.05 with it out. Two rules for the panel engine follow: signals built
+from the reference return skip at least one session, and a gross Sharpe
+above about 2 on this panel is bounce until a skip test says otherwise.
+
 ## Open questions
 
 * ~~How much of the VRP decile-10 effect is earnings timing?~~ Answered in
@@ -232,6 +247,11 @@ differ by the amount that note describes.
   and the rank book slightly better (Sharpe 1.35 → 1.40).
 * Do decile-10 names realize more vol than their forecast (the market has
   information) or realize the forecast (sellers are being paid)?
+* Residualise the momentum signal against the market straddle factor, or
+  restore `FactorNeutral` for it; the tilt is most of the gap between its
+  sort and its book.
+* Mark the reference unit at the far touch, or skip two sessions, to bound
+  how much short-horizon reversal is real.
 * Roll cadence: a 90-day entry rolled at 30 halves the roll count. The
   reference returns and stored model would need rebuilding with the new
   `StraddleConfig`.

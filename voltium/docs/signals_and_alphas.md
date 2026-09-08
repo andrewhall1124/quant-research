@@ -131,6 +131,19 @@ for the residualised premium. `TimeSeriesZScoreConfig(tenor=60, window=250, min_
 
 Over seven years the two behave differently; see [experiments.md](experiments.md).
 
+## Past reference returns (`PastReturnSignal`)
+
+Heston, Jones, Khorram, Li and Mo (2023): past delta-hedged straddle
+returns predict future ones. The reference panel already holds that return
+per name per day, so the signal is
+`PastReturnConfig(window=252, skip=21, sign=-1)`: the sum of `pnl_per_vega`
+over `window` sessions ending `skip` sessions ago, z-scored across names
+each session and clipped at ±3. `sign=-1` puts it in the richness
+convention for momentum (a high past return is *cheap*, the book buys it);
+`sign=+1` is reversal. `min_periods` defaults to half the window.
+`research/vol_momentum` and `research/vol_reversal` report what each
+window earns.
+
 ## Alpha (`providers/alphas.py`)
 
 ```

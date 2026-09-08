@@ -170,3 +170,52 @@ class TimeSeriesIVZScoreSignal(SignalProvider, PanelProvider):
             .sort("date", "symbol")
         )
         PanelProvider.__init__(self, panel_df)
+
+
+@dataclass(frozen=True)
+class PastReturnConfig:
+    """Trailing per-vega P&L of the reference unit as a signal (Heston, Jones, Khorram, Li and Mo, 2023).
+
+    `window` sessions ending `skip` sessions before today are summed per name
+    and z-scored across names each session. `sign=-1` is momentum in the
+    richness convention (a high past return means implied is *cheap* going
+    forward, so the book buys it); `sign=+1` is reversal. `min_periods`
+    non-null sessions are needed inside the window (default: half of it).
+    """
+
+    window: int = 252
+    skip: int = 21
+    sign: float = -1.0
+    min_periods: int | None = None  # default: half the window
+    winsor: float = 3.0
+    min_names: int = 50
+
+
+class PastReturnSignal(SignalProvider, PanelProvider):
+    """Cross-sectional z-score of each name's trailing reference-straddle P&L per $ vega."""
+
+    def __init__(self, reference_df: pl.DataFrame, config: PastReturnConfig = PastReturnConfig()) -> None:
+        self.config = config
+        min_periods = config.min_periods if config.min_periods is not None else max(1, config.window // 2)
+        past = (
+            pl.col("pnl_per_vega")
+            .rolling_sum(config.window, min_samples=min_periods)
+            .shift(config.skip)
+            .over("symbol")
+            .alias("past_return")
+        )
+        panel_df = (
+            reference_df.select("date", "symbol", "pnl_per_vega")
+            .sort("symbol", "date")
+            .with_columns(past)
+            .drop_nulls("past_return")
+            .with_columns(pl.len().over("date").alias("n"))
+            .filter(pl.col("n") >= config.min_names)
+            .with_columns(
+                ((pl.col("past_return") - pl.col("past_return").mean().over("date")) / pl.col("past_return").std().over("date")).alias("z")
+            )
+            .with_columns((config.sign * pl.col("z")).clip(-config.winsor, config.winsor).alias("signal"))
+            .select("date", "symbol", "past_return", "signal")
+            .sort("date", "symbol")
+        )
+        PanelProvider.__init__(self, panel_df)

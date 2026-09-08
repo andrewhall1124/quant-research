@@ -54,3 +54,24 @@ def test_time_series_zscore_is_relative_to_each_names_own_history():
     # a flat series has zero std and is dropped; a rising one is above its trailing mean
     assert last.filter(pl.col("symbol") == "FLAT").is_empty()
     assert last.filter(pl.col("symbol") == "RISING")["signal"][0] > 1.0
+
+
+def test_past_return_signal_sums_the_window_before_the_skip_and_zscores():
+    import datetime as dt
+
+    from voltium.providers.signals import PastReturnConfig, PastReturnSignal
+
+    dates = [dt.date(2024, 1, 1) + dt.timedelta(days=i) for i in range(12)]
+    rows = []
+    for j, symbol in enumerate(["A", "B", "C"]):
+        for i, d in enumerate(dates):
+            rows.append({"date": d, "symbol": symbol, "pnl_per_vega": float(j) * (1.0 if i < 9 else 100.0)})  # the last 3 sessions are huge, and skipped
+    reference_df = pl.DataFrame(rows)
+    signal = PastReturnSignal(reference_df, PastReturnConfig(window=5, skip=3, sign=-1.0, min_periods=5, min_names=3, winsor=10.0))
+    last = signal.get(dates[-1]).sort("symbol")
+    assert last["past_return"].to_list() == [0.0, 5.0, 10.0]  # sessions 4..8 of each name, none of the 100s
+    z = last["signal"].to_list()
+    assert abs(z[1]) < 1e-12 and z[0] > 0 > z[2]  # momentum: the best past return is "cheap" (negative richness)
+    assert abs(z[0] + z[2]) < 1e-12
+    first_dates = signal.dates()
+    assert first_dates[0] == dates[7]  # 5 sessions of window + 3 of skip need 8 sessions

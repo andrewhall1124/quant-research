@@ -94,7 +94,7 @@ providers/
   stock_features.py        beta, idio vol, log_size (proxy), gap_freq from stock returns
   straddle_returns.py      per-unit-vega reference P&L, produced by running the backtester; StoredStraddleReturns
   chain.py                 per-date option cross-section (one lazy scan per session)
-  signals.py               CrossSectionalVRPSignal: residualised, smoothed, z-scored
+  signals.py               CrossSectionalVRPSignal: residualised, smoothed, z-scored; TimeSeriesIVZScoreSignal; PastReturnSignal
   alphas.py                ICScaledAlpha: alpha = -IC · sigma_idio · z
 instruments/
   base.py                  Instrument ABC: select / mark / should_roll / hedge_shares

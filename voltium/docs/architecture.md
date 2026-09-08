@@ -64,7 +64,7 @@ src/voltium/
     stock_features.py        compute_stock_features; StockFeaturesProvider; load_spx_closes
     chain.py                 ChainProvider ABC; StoreChainProvider (one lazy scan per session); FrameChainProvider
     straddle_returns.py      compute_reference_path; StraddleReturnsProvider; StoredStraddleReturns
-    signals.py               SignalProvider ABC; CrossSectionalVRPSignal; TimeSeriesIVZScoreSignal
+    signals.py               SignalProvider ABC; CrossSectionalVRPSignal; TimeSeriesIVZScoreSignal; PastReturnSignal
     alphas.py                AlphaProvider ABC; ICScaledAlpha
   instruments/
     base.py                  LegSpec, UnitSpec, UnitMark; Instrument ABC
