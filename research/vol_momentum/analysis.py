@@ -136,11 +136,16 @@ def market_loading(regression_df: pl.DataFrame) -> tuple[float, float]:
     return (float(row["coefficient"][0]), float(row["t_stat"][0])) if row.height else (float("nan"), float("nan"))
 
 
-def run_study(windows: list[tuple[str, int, int]], sign: float, ctx: Context, results_dir: Path, figures_dir: Path, figure_name: str, title: str) -> pl.DataFrame:
+def run_study(
+    windows: list[tuple[str, int, int]], sign: float, ctx: Context, results_dir: Path, figures_dir: Path, figure_name: str, title: str,
+    signal_reference_df: pl.DataFrame | None = None,
+) -> pl.DataFrame:
+    """`signal_reference_df` (default: the reference panel) is what the signal is built from; the books always trade the reference unit."""
     started = time.time()
     rows, decile_frames, series = [], [], []
+    source_df = signal_reference_df if signal_reference_df is not None else ctx.reference_df
     for label, window, skip in windows:
-        signal = PastReturnSignal(ctx.reference_df, PastReturnConfig(window=window, skip=skip, sign=sign))
+        signal = PastReturnSignal(source_df, PastReturnConfig(window=window, skip=skip, sign=sign))
         deciles = BacktestResults.decile_table(signal.panel_df.filter(pl.col("date").is_between(ctx.start, ctx.end)), ctx.reference_df, horizon_days=HORIZON)
         decile_frames.append(deciles.with_columns(pl.lit(label).alias("window")))
         stats = spread_stats(spread_series(signal.panel_df, ctx.reference_df, ctx.start, ctx.end))

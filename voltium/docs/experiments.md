@@ -238,6 +238,44 @@ one-week reversal book has gross Sharpe 4.5 with the last session in and
 from the reference return skip at least one session, and a gross Sharpe
 above about 2 on this panel is bounce until a skip test says otherwise.
 
+### Why the rank book beats the optimizer
+
+Diagnostics on the seven-year VRP books (panel engine, `demos/risk_aversion_sweep.py`):
+
+| | MVO, λ 1e-5 | rank |
+| --- | --- | --- |
+| effective names (1 / Σ share²) | 32 | 330 |
+| largest name, share of gross vega | 7.6% | 1.0% |
+| rank correlation of weight with idio vol | +0.44 | +0.10 |
+| daily P&L per $ gross vega, mean / std | 0.085 / 1.06 | 0.031 / 0.32 |
+
+The optimizer earns 2.7× the return per unit of gross vega and takes 3.3×
+the risk. The positive weight–idio-vol correlation says the risk term is
+not steering: alpha is `IC × σ_idio × z`, the gross cap binds, and the
+problem is close to a linear one that piles vega onto the largest |alpha|,
+which is the most volatile names. Sweeping the risk aversion:
+
+| λ | gross P&L | Sharpe | max drawdown | gross vega | effective names |
+| --- | --- | --- | --- | --- | --- |
+| 1e-5 (demo) | $2.97M | 1.28 | −$280k | $19.5k | 32 |
+| 1e-4 | $640k | 1.26 | −$66k | $14.9k | 168 |
+| 1e-3 | $66k | 1.19 | −$7k | $1.9k | 201 |
+| 1e-2 | $7k | 1.19 | −$1k | $0.2k | 201 |
+| 1e-5, $2k per-name cap | $2.97M | 1.27 | −$280k | $19.5k | 32 |
+
+Raising λ spreads the book and shrinks it (above 1e-4 the gross cap stops
+binding, so the risk term sets the size) but leaves the Sharpe at
+1.19–1.28 against the rank book's 1.56. The per-name cap never binds on
+the panel engine (the largest name is ~$1.5k). So the gap is not a
+calibration problem: at any λ the mean-variance weights `∝ z / σ_idio`
+under a near-diagonal covariance (the factors explain 18% of
+reference-return variance) are a worse cross-sectional weighting than
+centred ranks on this alpha. Candidates: the linear-in-z alpha when the
+decile tables say the effect is in one tail; noise in the 250-day idio
+vol estimates that `1/σ` amplifies; and the loss of diversification (200
+effective names against 330). A z-weighted and a `z/σ`-weighted rank-style
+book would separate them.
+
 ## Open questions
 
 * ~~How much of the VRP decile-10 effect is earnings timing?~~ Answered in
@@ -247,9 +285,10 @@ above about 2 on this panel is bounce until a skip test says otherwise.
   and the rank book slightly better (Sharpe 1.35 → 1.40).
 * Do decile-10 names realize more vol than their forecast (the market has
   information) or realize the forecast (sellers are being paid)?
-* Residualise the momentum signal against the market straddle factor, or
-  restore `FactorNeutral` for it; the tilt is most of the gap between its
-  sort and its book.
+* ~~Residualise the momentum signal against the market straddle factor~~
+  Done in `research/idio_momentum`: it weakens the sort by a fifth and
+  only reduces the tilt (t 8.3 → 6.4). Restore `FactorNeutral` for the raw
+  signal instead, or beta-adjust the rank weights.
 * Mark the reference unit at the far touch, or skip two sessions, to bound
   how much short-horizon reversal is real.
 * Roll cadence: a 90-day entry rolled at 30 halves the roll count. The
