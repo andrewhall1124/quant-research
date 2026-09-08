@@ -97,7 +97,7 @@ def compute_realized_vol_panel(
 
 
 def compute_close_to_close_panel(
-    closes: pl.LazyFrame, config: RealizedVolConfig = RealizedVolConfig()
+    closes: pl.LazyFrame, config: RealizedVolConfig = RealizedVolConfig(), exclude_df: pl.DataFrame | None = None
 ) -> pl.LazyFrame:
     """The same panel from closes only: `(date, symbol, close[, split_ratio])`.
 
@@ -106,6 +106,11 @@ def compute_close_to_close_panel(
     is the estimator that reaches the whole option history (see
     `loaders.scan_spot_from_chains`); Yang-Zhang needs OHLC and the stock
     file only starts mid-2023. Same columns, so the HAR is indifferent.
+
+    `exclude_df` `(date, symbol)` names sessions whose squared return is left
+    out of every window (earnings sessions, for a diffusive realized vol);
+    the mean is then over the remaining sessions in the window, and `rv_1`
+    is null on an excluded session.
     """
     by = "symbol"
     if "split_ratio" not in closes.collect_schema().names():
@@ -117,9 +122,17 @@ def compute_close_to_close_panel(
             ((pl.col("close") * pl.col("split_ratio") / pl.col("close").shift(1).over(by)).log() ** 2).alias("squared")
         )
     )
+    if exclude_df is not None:
+        excluded = exclude_df.select("date", "symbol").unique().with_columns(pl.lit(True).alias("excluded")).lazy()
+        frame = frame.join(excluded, on=["date", "symbol"], how="left").with_columns(
+            pl.when(pl.col("excluded").fill_null(False)).then(None).otherwise(pl.col("squared")).alias("squared")
+        )
+    frame = frame.with_columns(pl.col("squared").is_not_null().cast(pl.Float64).alias("counted"))
 
     def variance(n: int) -> pl.Expr:
-        daily = pl.col("squared") if n == 1 else pl.col("squared").rolling_mean(n)
+        if n == 1:
+            return pl.col("squared") * SESSIONS_PER_YEAR
+        daily = pl.col("squared").fill_null(0.0).rolling_sum(n) / pl.col("counted").rolling_sum(n)
         return daily * SESSIONS_PER_YEAR
 
     n = config.forward_window

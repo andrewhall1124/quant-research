@@ -84,8 +84,11 @@ the Black-Scholes utilities use a rate, and they default to a flat 4%.
 
 **Splits** — `scan_splits(paths)`: `date, symbol, split_ratio` on ex-dates.
 
-**Earnings** — `scan_earnings(paths)`: `symbol, date, session`. Read by
-nothing yet; it is there for the `EarningsAdjuster` hook.
+**Earnings** — `scan_earnings(paths)`: `symbol, date, session`.
+`providers/earnings.py: load_earnings_events` maps each to the session whose
+return carries the move (`bmo` → same session, `amc` → next). 507 of the
+659 names in the 2017–2025 universe have dates; the missing ones are names
+that have left the index, so the table is survivorship-biased.
 
 ## The vega-convention check
 

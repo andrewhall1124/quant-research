@@ -58,6 +58,7 @@ src/voltium/
     calendar.py              CalendarProvider ABC; TradingCalendar
     universe.py              UniverseProvider, PointInTimeUniverse; SectorProvider, StaticSectorProvider
     surface.py               SurfaceConfig, EarningsAdjuster / NoOpEarningsAdjuster, build_surface_panel,
+    earnings.py              load_earnings_events, estimate_jump_variance, TermStructureEarningsAdjuster
                              SurfaceProvider, ConstantMaturitySurface
     realized_vol.py          Yang-Zhang and close-to-close panels; RealizedVolForecaster ABC; HARForecaster
     stock_features.py        compute_stock_features; StockFeaturesProvider; load_spx_closes

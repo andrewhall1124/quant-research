@@ -6,6 +6,10 @@ checklist for each.
 
 ## An earnings adjuster
 
+Done: `providers/earnings.py: TermStructureEarningsAdjuster`. The recipe
+below is what it implements; a different jump estimate (a per-name history
+of realized moves, say) is a second subclass.
+
 `providers/surface.py: EarningsAdjuster.adjust(pillars_lf) -> pillars_lf`,
 on `(date, symbol, expiration, dte, atm_iv)`, before interpolation.
 

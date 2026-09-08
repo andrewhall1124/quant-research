@@ -11,8 +11,15 @@
    the put nearest `|delta| = 0.50` (ties broken by strike) and average
    their IVs. Both rights are required (`require_both_rights`).
 2. **Earnings hook.** `EarningsAdjuster.adjust(pillars_lf) -> pillars_lf`
-   runs here, on `(date, symbol, expiration, dte, atm_iv)`. v1 ships
-   `NoOpEarningsAdjuster`. See [extending.md](extending.md).
+   runs here, on `(date, symbol, expiration, dte, atm_iv)`. The default is
+   `NoOpEarningsAdjuster`; `providers/earnings.py: TermStructureEarningsAdjuster`
+   strips the jump variance of every announcement a pillar spans, estimated
+   from the pillars on either side of the event (`estimate_jump_variance`),
+   with the name's own trailing median as the fallback. The companion
+   `compute_close_to_close_panel(..., exclude_df=events)` drops the event
+   sessions from realized vol. `research/earnings_adjusted_vrp` measures
+   what the adjustment does to the VRP signal: the raw signal's calendar
+   loading goes away, the decile-10 effect and the book P&L do not change.
 3. **Interpolation.** Pillars are converted to total variance
    `iv² × dte / 365`, linearly interpolated in `dte` to each tenor, and
    converted back. A tenor outside the pillar range is **null** unless

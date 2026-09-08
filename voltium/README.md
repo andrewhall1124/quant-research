@@ -8,7 +8,7 @@ long cheap implied vol and short expensive implied vol via delta-hedged ATM
 straddles on the S&P 500 universe. Polars end to end, lazy until the last
 moment; ABCs first, one concrete implementation each.
 
-This is v1: daily data only, no earnings adjustment, no skew or term books.
+This is v1: daily data only, an optional earnings adjustment, no skew or term books.
 The extension points for those are listed at the end.
 
 **Documentation** lives in [`docs/`](docs/README.md): one page per layer
@@ -305,9 +305,11 @@ gross edge.
 
 ## Known v1 limitations
 
-* **No earnings adjustment.** `NoOpEarningsAdjuster` is wired in where the
-  jump variance would be subtracted from the pillars. Earnings dates are in the
-  store (`loaders.scan_earnings`).
+* **Earnings adjustment is opt-in.** `providers/earnings.py:
+  TermStructureEarningsAdjuster` strips the jump variance from the pillars;
+  the demos still use `NoOpEarningsAdjuster` because
+  `research/earnings_adjusted_vrp` found it removes the signal's calendar
+  loading without changing its P&L.
 * **Sectors are a static snapshot.** GICS sectors come from today's Wikipedia
   constituent table (`data_pipelines.cli sectors`). A name that left the index
   has no sector and drops out of the sector factor; a name that changed sector

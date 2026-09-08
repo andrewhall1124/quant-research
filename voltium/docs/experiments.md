@@ -225,9 +225,13 @@ differ by the amount that note describes.
 
 ## Open questions
 
-* How much of the VRP decile-10 effect is earnings timing? Names a week
-  before reporting have rich front IV and the surface has no earnings
-  adjustment. The `EarningsAdjuster` hook is where to test it.
+* ~~How much of the VRP decile-10 effect is earnings timing?~~ Answered in
+  `research/earnings_adjusted_vrp`: none of it. The raw signal's z-score
+  moves 0.7 across the quarter with distance to the print, but the forward
+  P&L does not, and stripping the jump leaves the decile table unchanged
+  and the rank book slightly better (Sharpe 1.35 → 1.40).
+* Do decile-10 names realize more vol than their forecast (the market has
+  information) or realize the forecast (sellers are being paid)?
 * Roll cadence: a 90-day entry rolled at 30 halves the roll count. The
   reference returns and stored model would need rebuilding with the new
   `StraddleConfig`.
